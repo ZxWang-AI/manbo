@@ -4,6 +4,7 @@ title: 强迫劳动的国际法定义（ILO 三要件）
 category: definitions
 jurisdiction: 国际
 authority: ILO
+evidence_status: verified
 last_verified: 2026-08-31
 sources:
   - ILO Convention No. 29 (1930), Article 2

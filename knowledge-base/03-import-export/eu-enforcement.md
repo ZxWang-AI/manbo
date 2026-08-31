@@ -4,11 +4,11 @@ title: 欧盟 FLR 调查与产品处置机制
 category: import-export
 jurisdiction: 欧盟
 authority: European Union / 成员国主管机构
+evidence_status: needs-review
 applies_from: 2027-12-14
 last_verified: 2026-08-31
 sources:
-  - Regulation (EU) 2024/3015
-  - https://eur-lex.europa.eu/EN/legal-content/summary/ban-on-forced-labour-products-on-the-eu-market.html
+  - Regulation (EU) 2024/3015, https://eur-lex.europa.eu/eli/reg/2024/3015/oj/eng
 ---
 
 # 欧盟 FLR 调查与产品处置机制
@@ -17,7 +17,7 @@ sources:
 
 1. **主管机构依职权**：基于委员会**风险数据库**（risk database）、其他成员国主管机构共享的信息、海关数据启动。
 2. **投诉启动**：任何自然人或法人可向成员国主管机构提交投诉（可匿名），投诉信息汇入风险数据库。
-3. 委员会 2026 年 6 月 26 日已上线**强迫劳动单一门户**（single portal）作为统一入口与信息枢纽。
+3. 欧盟委员会是否已上线单一门户、风险数据库及其公开范围，须在运行时打开官方页面核验；本文件不把动态上线日期硬编码为事实。
 
 ## 调查与决定流程
 

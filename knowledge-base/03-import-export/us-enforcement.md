@@ -4,6 +4,7 @@ title: 美国进口侧执法流程（CBP）与举报衔接
 category: import-export
 jurisdiction: 美国
 authority: CBP / DHS
+evidence_status: needs-review
 last_verified: 2026-08-31
 sources:
   - CBP, UFLPA, https://www.cbp.gov/trade/forced-labor/UFLPA

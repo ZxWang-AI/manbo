@@ -4,6 +4,7 @@ title: 证据类型与强度分级标准
 category: judgment
 jurisdiction: 通用
 authority: 平台设计规范
+evidence_status: design
 last_verified: 2026-08-31
 sources:
   - CBP Forced Labor Allegation Submission Checklist (2025)

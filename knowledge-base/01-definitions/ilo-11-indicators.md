@@ -4,6 +4,7 @@ title: ILO 强迫劳动 11 项指标详解（判定核心依据）
 category: definitions
 jurisdiction: 国际
 authority: ILO
+evidence_status: verified
 last_verified: 2026-08-31
 sources:
   - ILO. ILO Indicators of Forced Labour: Booklet (2012), https://www.ilo.org/sites/default/files/wcmsp5/groups/public/%40ed_norm/%40declaration/documents/publication/wcms_203832.pdf

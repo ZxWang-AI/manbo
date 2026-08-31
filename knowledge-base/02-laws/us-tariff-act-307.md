@@ -4,6 +4,7 @@ title: 美国关税法第 307 条（19 U.S.C. § 1307）
 category: laws
 jurisdiction: 美国
 authority: U.S. Congress
+evidence_status: needs-review
 in_force: 1930（经 TFTEA 2016 修订）
 last_verified: 2026-08-31
 sources:
@@ -35,6 +36,6 @@ sources:
 
 ## 对举报的意义
 
-- CBP 设有专门的强迫劳动指控提交门户（Forced Labor Division / e-Allegations），接受匿名指控；高质量指控（供应链地图、厂商名称地址、照片、提单信息）可直接触发调查与 WRO。
+- CBP 设有专门的强迫劳动指控提交入口（Forced Labor Division / e-Allegations）。高质量指控可为风险评估提供线索，但是否调查、发布 WRO 或采取其他行动由 CBP 独立决定；平台不得表述为“可直接触发”。
 - 举报不要求举报人是美国当事人；供应链上任何环节的工人都可提交。
 - 详见 `03-import-export/us-enforcement.md` 与 `05-reporting-channels/channels-by-jurisdiction.md`。

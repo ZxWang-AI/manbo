@@ -4,6 +4,7 @@ title: AI 证据评估三层框架（判定流程）
 category: judgment
 jurisdiction: 通用
 authority: 平台设计规范（基于 ILO 框架）
+evidence_status: design
 last_verified: 2026-08-31
 sources:
   - 平台研究报告 6.3 节
@@ -23,6 +24,8 @@ sources:
   -> 第三层：证据完整性评估（还缺什么）
   -> 输出（结构化评估卡 + 免责声明，见 output-rules.md）
 ```
+
+MVP 默认只处理用户主动输入的文本和非敏感结构化字段；原始图片/文件上传属于后置能力，必须通过 `docs/release-gates.md` Gate 2 后才可启用。LLM 或 API 不可用时，系统降级到静态指标说明和官方链接，不显示已保存或已提交的状态。
 
 ## 第一层：ILO 11 项指标匹配
 

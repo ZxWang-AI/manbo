@@ -4,7 +4,11 @@ title: 情形严重程度分级与紧迫度
 category: judgment
 jurisdiction: 通用
 authority: 平台设计规范
+evidence_status: design
 last_verified: 2026-08-31
+sources:
+  - ../06-communication/safety-protocols.md
+  - assessment-framework.md
 ---
 
 # 情形严重程度分级与紧迫度

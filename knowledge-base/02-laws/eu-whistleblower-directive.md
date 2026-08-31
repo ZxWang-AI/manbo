@@ -4,6 +4,7 @@ title: 欧盟《举报人保护指令》(EU) 2019/1937
 category: laws
 jurisdiction: 欧盟
 authority: European Union
+evidence_status: needs-review
 in_force: 2021-12-17（转化截止）
 last_verified: 2026-08-31
 sources:

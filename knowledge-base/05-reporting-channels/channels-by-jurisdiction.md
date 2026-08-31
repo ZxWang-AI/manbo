@@ -4,6 +4,7 @@ title: 各法域举报渠道总表
 category: reporting-channels
 jurisdiction: 多法域
 authority: 各官方机构
+evidence_status: needs-review
 last_verified: 2026-08-31
 sources:
   - CBP, Forced Labor Leveling the Playing Field, https://www.cbp.gov/trade/forced-labor/leveling-playing-field

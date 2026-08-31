@@ -4,6 +4,7 @@ title: 美国强迫劳动刑事条款（18 U.S.C. § 1589 等）
 category: laws
 jurisdiction: 美国
 authority: U.S. Congress
+evidence_status: needs-review
 last_verified: 2026-08-31
 sources:
   - 18 U.S.C. § 1589（强迫劳动罪）

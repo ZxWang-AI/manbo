@@ -4,7 +4,11 @@ title: 危机情况应对协议
 category: communication
 jurisdiction: 通用
 authority: 平台设计规范
+evidence_status: design
 last_verified: 2026-08-31
+sources:
+  - principles.md
+  - ../docs/risk-register.md
 ---
 
 # 危机情况应对协议

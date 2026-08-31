@@ -4,7 +4,11 @@ title: 转介规则（何时指引到官方渠道与热线）
 category: judgment
 jurisdiction: 通用
 authority: 平台设计规范
+evidence_status: design
 last_verified: 2026-08-31
+sources:
+  - ../05-reporting-channels/channels-by-jurisdiction.md
+  - ../06-communication/safety-protocols.md
 ---
 
 # 转介规则

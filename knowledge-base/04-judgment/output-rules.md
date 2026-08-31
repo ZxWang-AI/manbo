@@ -4,7 +4,11 @@ title: AI 输出措辞规范（法律风控核心）
 category: judgment
 jurisdiction: 通用
 authority: 平台设计规范
+evidence_status: design
 last_verified: 2026-08-31
+sources:
+  - ../06-communication/disclaimers.md
+  - ../docs/release-gates.md
 ---
 
 # AI 输出措辞规范

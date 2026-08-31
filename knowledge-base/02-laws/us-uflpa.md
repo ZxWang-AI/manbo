@@ -4,6 +4,7 @@ title: 美国《维吾尔强迫劳动预防法》UFLPA
 category: laws
 jurisdiction: 美国
 authority: U.S. Congress
+evidence_status: needs-review
 signed: 2021-12-23（Public Law 117-78）
 in_force: 2022-06-21（执法开始）
 last_verified: 2026-08-31
@@ -24,7 +25,7 @@ sources:
 2. 由 UFLPA **实体清单**（Entity List）上的实体开采、生产或制造；
 3. 使用了清单实体生产（包括提供材料）的货物。
 
-推翻推定的唯一路径：进口商以 **clear and convincing evidence（清晰且有说服力的证据）** 证明货物供应链完全不含强迫劳动。这是美国民事诉讼中的最高证明标准之一，实际通过率极低。
+推翻推定的路径和证据要求由 UFLPA、CBP 指引及具体案件程序决定；本文件不对申请成功率或“通过率”作判断。引用证明标准时，必须回到 CBP 当前官方指引。
 
 ## 执法主体与流程
 

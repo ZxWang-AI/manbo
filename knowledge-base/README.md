@@ -3,14 +3,19 @@ id: kb-root-readme
 title: 强迫劳动知识库总索引
 category: index
 maintainer: is-your-labor-forced
+jurisdiction: 通用
+authority: 平台知识库维护规范
 last_verified: 2026-08-31
+evidence_status: design
+sources:
+  - ../docs/research-and-plan.md
+  - ../docs/risk-register.md
+  - ../docs/release-gates.md
 ---
 
 # 强迫劳动知识库（Agent Knowledge Base）
 
-本知识库为 `is-your-labor-forced` 项目的 AI agent 提供判定强迫劳动与用户沟通所需的全部知识文件。知识来源于 `docs/research-and-plan.md` 研究报告，并按"agent 可检索、可引用、可维护"的原则拆分为单一主题的独立文件。
-
-**Agent 使用前必读 `AGENT-GUIDE.md`**（检索路径、引用规则、输出纪律、危机处理、边界与更新流程）。
+本知识库为未来的 Manbo agent 提供“举报准备与信息导航”所需的定义、法律导航、执法入口、判断规则、渠道和沟通资料。它不是法律意见库，也不是官方事实数据库。**Agent 使用前必读 [`AGENT-GUIDE.md`](AGENT-GUIDE.md)。**
 
 ## 目录结构与文件索引
 
@@ -18,75 +23,91 @@ last_verified: 2026-08-31
 
 | 文件 | 内容 |
 |------|------|
-| `ilo-core-definition.md` | ILO 第 29 号公约第 2 条强迫劳动定义的三要件逐项解析（工作/服务、非自愿性、惩罚威胁），及与人口贩运、现代奴役、童工的概念边界 |
-| `ilo-11-indicators.md` | ILO 11 项强迫劳动指标逐项拆解（定义、典型表现、判定要点、证据类型），agent 判定的核心对照表 |
-| `jurisdiction-comparison.md` | 10 个法域（ILO/EU/美/英/德/法/澳/加/中/日）强迫劳动定义对比，及 5 个关键差异说明 |
+| `ilo-core-definition.md` | ILO 第 29 号公约第 2 条三要件与概念边界 |
+| `ilo-11-indicators.md` | 11 项指标、典型表现、证据类型和安全提示 |
+| `jurisdiction-comparison.md` | 国际、欧盟、美国及主要法域的导航级差异 |
 
-### 02-laws/ —— 法律法规
-
-| 文件 | 内容 |
-|------|------|
-| `eu-forced-labour-regulation.md` | 欧盟强迫劳动产品条例 (EU) 2024/3015：2027-12-14 起适用，产品禁售/撤市/处置机制 |
-| `eu-csddd.md` | 欧盟企业可持续尽职调查指令（Omnibus 修订后）：适用门槛、5 项核心义务、投诉机制 |
-| `eu-whistleblower-directive.md` | 欧盟吹哨人指令 2019/1937：反报复保护、举证责任倒置、渠道要求及成员国立法 |
-| `us-tariff-act-307.md` | 美国关税法第 307 条（19 U.S.C. § 1307）："全部或部分"标准、TFTEA 2016 废除"市场需求例外" |
-| `us-uflpa.md` | 美国《维吾尔强迫劳动预防法》(UFLPA)：可反驳推定、明确且令人信服的证据标准、实体清单 |
-| `us-criminal-provisions.md` | 美国刑事条款：18 U.S.C. § 1589（最高 20 年监禁）、§ 1590、TVPA 与 T 签证保护 |
-| `other-jurisdictions.md` | 德国（LkSG/StGB § 233）、英国（MSA 2015）、法国、澳大利亚、加拿大、中国（刑法 244 条）、日本 |
-
-### 03-import-export/ —— 进出口管制与执法
+### 02-laws/ —— 法律导航摘要
 
 | 文件 | 内容 |
 |------|------|
-| `us-enforcement.md` | 美国 CBP 执法链路、WRO 发令机制、有效举报的构成要素与证据包映射 |
-| `eu-enforcement.md` | 欧盟 FLR 调查启动（依职权/单一门户投诉）、裁决流程、证据标准 |
-| `entity-lists.md` | UFLPA 实体清单（5 项列入标准、行业分布、动态）、其他公开数据库一览 |
+| `eu-forced-labour-regulation.md` | Regulation (EU) 2024/3015 的官方日期、范围和待核实实施细节 |
+| `eu-csddd.md` | Directive (EU) 2024/1760；修法和成员国转化状态不硬编码 |
+| `eu-whistleblower-directive.md` | Directive (EU) 2019/1937 与成员国转化差异 |
+| `us-tariff-act-307.md` | 美国进口禁令的法律导航 |
+| `us-uflpa.md` | UFLPA 推定、官方入口和动态实体清单提示 |
+| `us-criminal-provisions.md` | 18 U.S.C. § 1589/1590 与转介边界 |
+| `other-jurisdictions.md` | 德/英/法/澳/加/中/日概览，均需运行时核验 |
 
-### 04-judgment/ —— AI 判定规则（agent 核心逻辑）
+### 03-import-export/ —— 进出口与公开数据入口
 
 | 文件 | 内容 |
 |------|------|
-| `assessment-framework.md` | 三层评估框架：ILO 指标匹配 → 法律映射 → 证据完备性，含硬性规则与结构化输出卡片格式 |
-| `evidence-standards.md` | 7 类证据分类、A-D 证据强度分级、缺口追问话术、取证安全红线 |
-| `severity-scale.md` | S1（紧急）至 S4（一般劳动纠纷）严重度分级及对应处置 |
-| `output-rules.md` | 输出纪律：禁止表述 vs 替代表述对照表、概率化语言规则、3 段强制免责声明固定文本 |
-| `referral-rules.md` | 转介决策流：按用户处境匹配举报渠道、话术原则、危机情形固定动作 |
+| `us-enforcement.md` | CBP 线索要素、流程和不承诺反馈规则 |
+| `eu-enforcement.md` | FLR 适用日期、调查路径和官方链接策略 |
+| `entity-lists.md` | UFLPA 及其他公开数据库的链接，不复制动态快照 |
+
+### 04-judgment/ —— Agent 判断与输出规则
+
+| 文件 | 内容 |
+|------|------|
+| `assessment-framework.md` | 指标匹配 → 法域确认 → 证据缺口的三层流程 |
+| `evidence-standards.md` | 证据类型、强度、原始性和安全红线 |
+| `severity-scale.md` | 仅内部使用的紧迫度分级 |
+| `output-rules.md` | 禁止法律结论、来源和免责声明纪律 |
+| `referral-rules.md` | 按行为地/用户地/产品流向匹配渠道 |
 
 ### 05-reporting-channels/ —— 举报渠道
 
 | 文件 | 内容 |
 |------|------|
-| `channels-by-jurisdiction.md` | 各法域官方举报渠道（CBP/FBI/NHTH/BAFA/12333 等）、NGO 渠道、选择考量 |
-| `consequences.md` | 吹哨人保护与现实风险、被举报企业面临的后果、重复举报说明 |
+| `channels-by-jurisdiction.md` | 官方/NGO 渠道与运行时核验提示 |
+| `consequences.md` | 举报人保护、现实风险和企业侧后果 |
 
 ### 06-communication/ —— 用户沟通
 
 | 文件 | 内容 |
 |------|------|
-| `principles.md` | 创伤知情、不评判、诚实预期管理、用户决策权、语言可及性五原则及对话结构 |
-| `safety-protocols.md` | 危机触发信号表（暴力/拘禁/自伤/未成年人/贩运）、三步危机协议、禁止行为清单 |
-| `disclaimers.md` | 8 段固定免责声明文本（评估页脚、首页、企业页、隐私、法律引用等）及使用规则 |
-| `faq.md` | 12 个高频问题及回应指引（匿名性、后果、证据准备、设备安全等） |
+| `principles.md` | 创伤知情、不评判、可及性和用户决定权 |
+| `safety-protocols.md` | 暴力、拘禁、自伤、未成年人和贩运危机协议 |
+| `disclaimers.md` | 固定免责声明与防滥用文案 |
+| `faq.md` | 高频问题的事实与立场口径 |
 
-## 文件格式约定
+当前共有 26 个 Markdown 文件（含本索引和 Agent 指南）。
 
-每个文件头部包含 YAML frontmatter：
+## 文件格式与证据状态
+
+每个主题文件头部包含 YAML frontmatter：
 
 ```yaml
 ---
 id: 唯一标识（kebab-case）
 title: 文件标题
 category: definitions | laws | import-export | judgment | reporting-channels | communication
-jurisdiction: 适用法域（ILO / EU / US / DE / UK / CN / ...，可多值）
-authority: 法律文件或权威来源
-last_verified: 内容最后核实日期（YYYY-MM-DD）
-sources: 来源列表
+jurisdiction: 适用法域
+authority: 法律文件、官方机构或平台规范
+last_verified: YYYY-MM-DD
+evidence_status: verified | design | needs-review
+sources:
+  - 官方来源 URL 或项目内设计文档
 ---
 ```
 
-## 维护纪律
+- `verified`：可由官方法律文本、官方机构页面或 ILO 一手出版物追溯。
+- `design`：平台流程或安全规范，不是法律事实。
+- `needs-review`：来源动态、二手、修法进行中或无法稳定复核；不得用于硬编码法律结论。
 
-1. **时效性**：法律文件 `last_verified` 距今超过 90 天时，agent 必须提示用户"信息可能滞后，请以官方最新发布为准"，并列入知识库更新清单。
-2. **修改流程**：更新任何文件后同步更新 `last_verified`，并在对应 `sources` 中补充新来源；结构性调整需同步修订本 README 与 `AGENT-GUIDE.md`。
-3. **新增文件**：遵循"一文件一主题"，加入对应编号文件夹，并在本 README 索引表中登记。
-4. **禁止事项**：不得在知识库中添加未经核实的个案指控、企业黑名单式结论或任何官方清单之外的事实断言。
+用户报告、公司回应和第三方材料必须在数据模型中单独标记来源层，不能写回法律事实文件。
+
+## 维护与变更纪律
+
+1. 法律、渠道和动态清单超过 90 天未复核时，agent 必须提示可能滞后并链接官方页面。
+2. 更新文件必须同步修改 `last_verified`、`evidence_status`、`sources` 和变更摘要；发现冲突时保留冲突说明，不自行选择“看起来合理”的版本。
+3. 不得复制动态实体清单数量、案件统计或公司指控快照；只保存官方链接、抓取日期和必要的结构化字段。
+4. 不得加入未经核实的个案指控、个人隐私、企业黑名单结论或鼓励冒险取证的内容。
+5. 结构性调整须同步修订 `AGENT-GUIDE.md`、README 和发布门禁。
+6. 任何新法域先作为 `needs-review` 导航条目，经过官方来源和目标法域法律审阅后才可升级为 `verified`。
+
+## 与发布门禁的关系
+
+知识库事实状态是 Gate 0 的输入。Gate 1 仅允许举报准备能力；证据托管、公开聚合、地图、跨用户关联和 API 必须分别通过 [`../docs/release-gates.md`](../docs/release-gates.md) 的后续门禁。没有门禁批准，agent 不得向用户暗示这些功能已经存在。

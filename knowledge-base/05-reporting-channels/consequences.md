@@ -4,7 +4,12 @@ title: 举报后果分析（举报人侧与企业侧）
 category: reporting-channels
 jurisdiction: 多法域
 authority: 平台研究综合
+evidence_status: needs-review
 last_verified: 2026-08-31
+sources:
+  - ../02-laws/eu-whistleblower-directive.md
+  - ../03-import-export/us-enforcement.md
+  - ../docs/risk-register.md
 ---
 
 # 举报后果分析
@@ -16,7 +21,7 @@ last_verified: 2026-08-31
 - **欧盟**：《举报人保护指令》(EU) 2019/1937 禁止报复、举证责任倒置（雇主须证明不利对待与举报无关）、身份保密义务、成员国提供免费咨询支持。
 - **德国**：HinSchG 对泄露举报人身份者设有刑事责任。
 - **美国**：特定领域有举报人保护（如 SOX、食品安全、交通），但**贸易类强迫劳动举报缺乏统一的金钱奖励与专属保护**；刑事举报人（FBI/HSI）可申请证人保护但门槛高。
-- **平台侧**：匿名提交 + 证据端到端加密 + 最小化日志（平台技术设计）。
+- **平台侧（设计建议，当前未上线）**：短期会话、数据最小化和不要求实名；证据托管与端到端加密属于后置能力，不能向用户承诺已经存在。
 
 ### 现实风险（必须如实告知用户）
 

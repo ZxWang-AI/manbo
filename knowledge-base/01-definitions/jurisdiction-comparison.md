@@ -4,6 +4,7 @@ title: 主要法域对强迫劳动的定义对比
 category: definitions
 jurisdiction: 多法域
 authority: 各法域立法机构
+evidence_status: needs-review
 last_verified: 2026-08-31
 sources:
   - 见各法域专篇（02-laws/）
