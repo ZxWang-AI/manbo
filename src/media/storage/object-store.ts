@@ -14,6 +14,15 @@ export interface BeginObjectUpload {
   };
 }
 
+export interface EncryptedUploadStart {
+  uploadTarget: MultipartUploadTarget & { transport: "platform_encrypted_multipart" };
+  encryption: {
+    scheme: "AES-256-GCM";
+    keyVersion: string;
+    wrappedKey: string;
+  };
+}
+
 export interface CompleteObjectUpload {
   uploadId: string;
   objectKey: string;
@@ -22,7 +31,7 @@ export interface CompleteObjectUpload {
 }
 
 export interface MaterialObjectStore {
-  beginEncryptedUpload(input: BeginObjectUpload): Promise<MultipartUploadTarget>;
+  beginEncryptedUpload(input: BeginObjectUpload): Promise<EncryptedUploadStart>;
   completeEncryptedUpload(input: CompleteObjectUpload): Promise<{
     objectKey: string;
     sha256: string;

@@ -7,6 +7,9 @@ import {
   assertMaterialReservationAllowed,
   createOpaqueMaterialObjectKey,
 } from "@/domain/material";
+import type { MaterialObjectStore } from "@/media/storage/object-store";
+import type { MaterialReservationRepository } from "@/server/repositories/material-repository";
+import { MaterialUploadService } from "@/server/services/material-upload-service";
 
 describe("material storage limits", () => {
   it("accepts the exact per-file and per-case limits", () => {
@@ -62,5 +65,187 @@ describe("material storage limits", () => {
     expect(key).toMatch(/^materials\/[a-f0-9]{32}$/);
     expect(key).not.toContain("case");
     expect(key).not.toContain("passport.pdf");
+  });
+});
+
+describe("material upload service", () => {
+  it("releases an atomic quota reservation when encrypted upload setup fails", async () => {
+    const reservation = {
+      uploadId: "upload-a",
+      materialId: "material-a",
+      caseId: "case-a",
+      objectKey: "materials/03030303030303030303030303030303",
+      reservedBytes: 1024,
+      expiresAt: "2026-08-31T12:15:00.000Z",
+    };
+    const released: string[] = [];
+    const repository: MaterialReservationRepository = {
+      reserve: async () => reservation,
+      attachEncryption: async () => undefined,
+      complete: async () => undefined,
+      release: async (_accountId, uploadId) => {
+        released.push(uploadId);
+      },
+    };
+    const objectStore: MaterialObjectStore = {
+      beginEncryptedUpload: async () => {
+        throw new Error("object store unavailable");
+      },
+      completeEncryptedUpload: async () => {
+        throw new Error("unused");
+      },
+      abortUpload: async () => undefined,
+      deleteObject: async () => undefined,
+    };
+    const service = new MaterialUploadService(repository, objectStore);
+
+    await expect(
+      service.reserve({ accountId: "acct-a", caseId: "case-a", byteLength: 1024 }),
+    ).rejects.toThrow("object store unavailable");
+    expect(released).toEqual(["upload-a"]);
+  });
+
+  it("persists encryption metadata before returning a platform upload target", async () => {
+    const attached: unknown[] = [];
+    const repository: MaterialReservationRepository = {
+      reserve: async () => ({
+        uploadId: "upload-a",
+        materialId: "material-a",
+        caseId: "case-a",
+        objectKey: "materials/03030303030303030303030303030303",
+        reservedBytes: 1024,
+        expiresAt: "2026-08-31T12:15:00.000Z",
+      }),
+      attachEncryption: async (...args) => {
+        attached.push(args);
+      },
+      complete: async () => undefined,
+      release: async () => undefined,
+    };
+    const objectStore: MaterialObjectStore = {
+      beginEncryptedUpload: async () => ({
+        uploadTarget: {
+          transport: "platform_encrypted_multipart",
+          uploadId: "upload-a",
+          objectKey: "materials/03030303030303030303030303030303",
+          parts: [],
+        },
+        encryption: {
+          scheme: "AES-256-GCM",
+          keyVersion: "kek-v1",
+          wrappedKey: "wrapped",
+        },
+      }),
+      completeEncryptedUpload: async () => {
+        throw new Error("unused");
+      },
+      abortUpload: async () => undefined,
+      deleteObject: async () => undefined,
+    };
+    const service = new MaterialUploadService(repository, objectStore);
+
+    const result = await service.reserve({
+      accountId: "acct-a",
+      caseId: "case-a",
+      byteLength: 1024,
+    });
+
+    expect(result.uploadTarget.transport).toBe("platform_encrypted_multipart");
+    expect(attached).toEqual([
+      [
+        "acct-a",
+        "upload-a",
+        { scheme: "AES-256-GCM", keyVersion: "kek-v1", wrappedKey: "wrapped" },
+      ],
+    ]);
+  });
+
+  it("aborts the multipart upload when encryption metadata cannot be persisted", async () => {
+    const aborted: string[] = [];
+    const repository: MaterialReservationRepository = {
+      reserve: async () => ({
+        uploadId: "upload-a",
+        materialId: "material-a",
+        caseId: "case-a",
+        objectKey: "materials/03030303030303030303030303030303",
+        reservedBytes: 1024,
+        expiresAt: "2026-08-31T12:15:00.000Z",
+      }),
+      attachEncryption: async () => {
+        throw new Error("metadata write failed");
+      },
+      complete: async () => undefined,
+      release: async () => undefined,
+    };
+    const objectStore: MaterialObjectStore = {
+      beginEncryptedUpload: async () => ({
+        uploadTarget: {
+          transport: "platform_encrypted_multipart",
+          uploadId: "upload-a",
+          objectKey: "materials/03030303030303030303030303030303",
+          parts: [],
+        },
+        encryption: { scheme: "AES-256-GCM", keyVersion: "kek-v1", wrappedKey: "wrapped" },
+      }),
+      completeEncryptedUpload: async () => ({
+        objectKey: "materials/03030303030303030303030303030303",
+        sha256: "hash",
+        storedBytes: 1024,
+      }),
+      abortUpload: async (uploadId) => {
+        aborted.push(uploadId);
+      },
+      deleteObject: async () => undefined,
+    };
+
+    await expect(
+      new MaterialUploadService(repository, objectStore).reserve({
+        accountId: "acct-a",
+        caseId: "case-a",
+        byteLength: 1024,
+      }),
+    ).rejects.toThrow("metadata write failed");
+    expect(aborted).toEqual(["upload-a"]);
+  });
+
+  it("aborts and releases a completed upload when stored bytes or hash do not match", async () => {
+    const aborted: string[] = [];
+    const released: string[] = [];
+    const repository: MaterialReservationRepository = {
+      reserve: async () => {
+        throw new Error("unused");
+      },
+      attachEncryption: async () => undefined,
+      complete: async () => undefined,
+      release: async (_accountId, uploadId) => {
+        released.push(uploadId);
+      },
+    };
+    const objectStore: MaterialObjectStore = {
+      beginEncryptedUpload: async () => {
+        throw new Error("unused");
+      },
+      completeEncryptedUpload: async () => ({
+        objectKey: "materials/03030303030303030303030303030303",
+        sha256: "wrong-hash",
+        storedBytes: 1023,
+      }),
+      abortUpload: async (uploadId) => {
+        aborted.push(uploadId);
+      },
+      deleteObject: async () => undefined,
+    };
+
+    await expect(
+      new MaterialUploadService(repository, objectStore).complete({
+        accountId: "acct-a",
+        uploadId: "upload-a",
+        objectKey: "materials/03030303030303030303030303030303",
+        expectedBytes: 1024,
+        expectedSha256: "hash",
+      }),
+    ).rejects.toThrow("MATERIAL_SIZE_OR_HASH_MISMATCH");
+    expect(aborted).toEqual(["upload-a"]);
+    expect(released).toEqual(["upload-a"]);
   });
 });
