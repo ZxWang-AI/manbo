@@ -106,10 +106,12 @@ model CaseRecord {
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz(3)
 
-  account   Account               @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
-  messages  ConversationMessage[]
-  consents  ConsentEvent[]
-  revisions CaseRecordRevision[]
+  account      Account               @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+  messages     ConversationMessage[]
+  consents     ConsentEvent[]
+  revisions    CaseRecordRevision[]
+  storageUsage CaseStorageUsage?
+  materials    Material[]
 
   @@unique([caseId, accountId])
   @@index([accountId, lifecycle])
@@ -132,6 +134,90 @@ model CaseRecordRevision {
   @@index([caseId, accountId])
   @@index([createdAt])
   @@map("case_record_revisions")
+}
+
+enum MaterialStatus {
+  reserved
+  uploaded
+  deleted
+}
+
+model CaseStorageUsage {
+  caseId        String   @id @map("case_id") @db.Uuid
+  accountId     String   @map("account_id") @db.Char(32)
+  usedBytes     BigInt   @default(0) @map("used_bytes")
+  reservedBytes BigInt   @default(0) @map("reserved_bytes")
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  case CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+
+  @@unique([caseId, accountId])
+  @@index([accountId])
+  @@map("case_storage_usage")
+}
+
+model Material {
+  materialId       String         @id @map("material_id") @db.Uuid
+  caseId           String         @map("case_id") @db.Uuid
+  accountId        String         @map("account_id") @db.Char(32)
+  status           MaterialStatus @default(reserved)
+  declaredBytes    BigInt         @map("declared_bytes")
+  usedBytes        BigInt?        @map("used_bytes")
+  objectKey        String?        @map("object_key") @db.VarChar(180)
+  sha256           String?        @db.Char(64)
+  encryptionScheme String?        @map("encryption_scheme") @db.VarChar(32)
+  keyVersion       String?        @map("key_version") @db.VarChar(80)
+  wrappedKey       String?        @map("wrapped_key") @db.Text
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  completedAt      DateTime?      @map("completed_at") @db.Timestamptz(3)
+  deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz(3)
+
+  case           CaseRecord              @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+  objectVersions MaterialObjectVersion[]
+
+  @@unique([materialId, caseId, accountId])
+  @@index([caseId, accountId, status])
+  @@map("materials")
+}
+
+model MaterialObjectVersion {
+  objectVersionId  String   @id @map("object_version_id") @db.Uuid
+  materialId       String   @map("material_id") @db.Uuid
+  caseId           String   @map("case_id") @db.Uuid
+  accountId        String   @map("account_id") @db.Char(32)
+  objectKey        String   @map("object_key") @db.VarChar(180)
+  storedBytes      BigInt   @map("stored_bytes")
+  sha256           String   @db.Char(64)
+  encryptionScheme String   @map("encryption_scheme") @db.VarChar(32)
+  keyVersion       String   @map("key_version") @db.VarChar(80)
+  wrappedKey       String   @map("wrapped_key") @db.Text
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  material Material @relation(fields: [materialId, caseId, accountId], references: [materialId, caseId, accountId], onDelete: Cascade)
+
+  @@unique([materialId, objectVersionId])
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("material_object_versions")
+}
+
+model MaterialUploadReservation {
+  uploadId         String         @id @map("upload_id") @db.Uuid
+  materialId       String         @map("material_id") @db.Uuid
+  caseId           String         @map("case_id") @db.Uuid
+  accountId        String         @map("account_id") @db.Char(32)
+  declaredBytes    BigInt         @map("declared_bytes")
+  status           MaterialStatus @default(reserved)
+  expiresAt        DateTime       @map("expires_at") @db.Timestamptz(3)
+  encryptionScheme String?        @map("encryption_scheme") @db.VarChar(32)
+  keyVersion       String?        @map("key_version") @db.VarChar(80)
+  wrappedKey       String?        @map("wrapped_key") @db.Text
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([caseId, accountId, status])
+  @@index([expiresAt])
+  @@map("material_upload_reservations")
 }
 
 model ConversationMessage {
