@@ -27,38 +27,41 @@ export const sourceTraceSchema = z
     quote: z.string().min(1).optional(),
   });
 
-export const indicatorAssessmentSchema = z
-  .strictObject({
-    indicatorId: z.union([
-      z.literal(1),
-      z.literal(2),
-      z.literal(3),
-      z.literal(4),
-      z.literal(5),
-      z.literal(6),
-      z.literal(7),
-      z.literal(8),
-      z.literal(9),
-      z.literal(10),
-      z.literal(11),
-    ]),
-    status: indicatorStatusSchema,
-    basis: z.array(sourceTraceSchema),
-    missing: z.array(z.string().min(1)),
-  })
-  .refine((item) => item.basis.length > 0 || item.missing.length > 0, {
-    message: "An assessment item needs a basis or explicit missing information",
-  });
+export const indicatorAssessmentSchema = z.strictObject({
+  indicatorId: z.union([
+    z.literal(1),
+    z.literal(2),
+    z.literal(3),
+    z.literal(4),
+    z.literal(5),
+    z.literal(6),
+    z.literal(7),
+    z.literal(8),
+    z.literal(9),
+    z.literal(10),
+    z.literal(11),
+  ]),
+  status: indicatorStatusSchema,
+  basis: z.array(sourceTraceSchema),
+  missing: z.array(z.string().min(1)),
+});
 
-export const elementItemSchema = z
-  .strictObject({
-    status: elementStatusSchema,
-    basis: z.array(sourceTraceSchema),
-    missing: z.array(z.string().min(1)),
+export const elementItemSchema = z.strictObject({
+  status: elementStatusSchema,
+  basis: z.array(sourceTraceSchema),
+  missing: z.array(z.string().min(1)),
+});
+
+/** Negative-test helper; it accepts unrelated keys but explicitly forbids scoring keys. */
+export const prohibitedAssessmentFieldsSchema = z
+  .object({
+    score: z.never().optional(),
+    probability: z.never().optional(),
+    rank: z.never().optional(),
+    rating: z.never().optional(),
+    successRate: z.never().optional(),
   })
-  .refine((item) => item.basis.length > 0 || item.missing.length > 0, {
-    message: "An assessment item needs a basis or explicit missing information",
-  });
+  .passthrough();
 
 export const elementAssessmentSchema = z.strictObject({
   workOrService: elementItemSchema,

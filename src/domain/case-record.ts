@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  aiReviewStatusSchema,
   elementAssessmentSchema,
   evidenceCoverageItemSchema,
   indicatorAssessmentSchema,
@@ -58,14 +59,7 @@ export const caseRecordSchema = z.strictObject({
   updatedAt: z.iso.datetime(),
   deletedAt: z.iso.datetime().optional(),
   /** Latest workflow hint is optional for records created before AI review. */
-  aiReviewStatus: z
-    .enum([
-      "ready_for_preparation",
-      "needs_more_information",
-      "out_of_scope",
-      "safety_referral",
-    ])
-    .optional(),
+  aiReviewStatus: aiReviewStatusSchema.optional(),
 });
 
 export type LifecycleStatus = z.infer<typeof lifecycleStatusSchema>;

@@ -13,6 +13,14 @@ const httpsUrlSchema = z.string().url().refine((value) => value.startsWith("http
 const reviewedRetentionPolicySchema = z
   .string()
   .regex(/^reviewed:[A-Za-z0-9._-]+$/, "AI_RETENTION_POLICY_ID must identify a reviewed policy");
+const productionSessionSecretSchema = z
+  .string()
+  .refine(
+    (value) =>
+      value !== "replace-with-at-least-32-random-characters" &&
+      /^(?:[A-Fa-f0-9]{64,}|[A-Za-z0-9_-]{43,}={0,2})$/u.test(value),
+    "SESSION_SECRET must encode at least 32 random bytes and must not use the published placeholder",
+  );
 
 const staticEnvironmentSchema = z.strictObject({
   NODE_ENV: nodeEnvironmentSchema,
@@ -45,18 +53,32 @@ const mockEnvironmentSchema = z
     path: ["AI_PROVIDER"],
   });
 
-const gatewayEnvironmentSchema = z.strictObject({
-  NODE_ENV: nodeEnvironmentSchema,
-  APP_MODE: z.literal("normal"),
-  DATABASE_URL: databaseUrlSchema,
-  SESSION_SECRET: z.string().min(32),
-  AI_PROVIDER: z.literal("gateway"),
-  AI_GATEWAY_URL: httpsUrlSchema,
-  AI_GATEWAY_TOKEN: z.string().min(16),
-  AI_MODEL_ALIAS: z.string().min(1),
-  AI_REGION: z.string().min(2),
-  AI_RETENTION_POLICY_ID: reviewedRetentionPolicySchema,
-});
+const gatewayEnvironmentSchema = z
+  .strictObject({
+    NODE_ENV: nodeEnvironmentSchema,
+    APP_MODE: z.literal("normal"),
+    DATABASE_URL: databaseUrlSchema,
+    SESSION_SECRET: z.string().min(32),
+    AI_PROVIDER: z.literal("gateway"),
+    AI_GATEWAY_URL: httpsUrlSchema,
+    AI_GATEWAY_TOKEN: z.string().min(16),
+    AI_MODEL_ALIAS: z.string().min(1),
+    AI_REGION: z.string().min(2),
+    AI_RETENTION_POLICY_ID: reviewedRetentionPolicySchema,
+  })
+  .superRefine((environment, context) => {
+    if (
+      environment.NODE_ENV === "production" &&
+      !productionSessionSecretSchema.safeParse(environment.SESSION_SECRET).success
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["SESSION_SECRET"],
+        message:
+          "SESSION_SECRET must encode at least 32 random bytes and must not use the published placeholder",
+      });
+    }
+  });
 
 const modelEnvironmentSchema = z.discriminatedUnion("AI_PROVIDER", [
   mockEnvironmentSchema,
@@ -81,7 +103,9 @@ const environmentKeys = [
 ] as const;
 
 function selectEnvironment(input: NodeJS.ProcessEnv | Record<string, string | undefined>) {
-  return Object.fromEntries(environmentKeys.map((key) => [key, input[key]]));
+  return Object.fromEntries(
+    environmentKeys.map((key) => [key, input[key] === "" ? undefined : input[key]]),
+  );
 }
 
 export function parseEnv(input: NodeJS.ProcessEnv | Record<string, string | undefined>): AppEnvironment {

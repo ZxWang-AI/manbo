@@ -211,11 +211,11 @@ function classifySource(value: unknown, context: KnowledgePathContext): Knowledg
     return resolveLocalReference(raw, context);
   }
 
-  const embeddedHttpsUrl = raw.match(/https:\/\/[^\s,，)）\]]+/iu)?.[0];
-  if (embeddedHttpsUrl) {
-    const normalizedEmbeddedUrl = normalizeHttpsUrl(embeddedHttpsUrl);
+  const embeddedUrl = raw.match(/[a-z][a-z\d+.-]*:\/\/[^\s,，)）\]]+/iu)?.[0];
+  if (embeddedUrl) {
+    const normalizedEmbeddedUrl = normalizeHttpsUrl(embeddedUrl);
     if (!normalizedEmbeddedUrl) {
-      throw new Error(`Malformed source URL: ${embeddedHttpsUrl}`);
+      throw new Error(`Malformed source URL: ${embeddedUrl}`);
     }
     return { raw, kind: "citation", url: normalizedEmbeddedUrl };
   }

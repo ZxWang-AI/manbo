@@ -11,6 +11,7 @@ export interface KnowledgeRegistryEntry {
   lastVerified: string;
   excerpt: string;
   sourceUrl?: string;
+  sourceUrls?: string[];
   /** Category is retained to enforce stricter legal/channel retrieval requirements. */
   category?: string;
 }
@@ -44,7 +45,13 @@ async function collectMarkdownFiles(directory: string): Promise<string[]> {
 }
 
 function toRegistryEntry(document: ReturnType<typeof parseKnowledgeFile>): KnowledgeRegistryEntry {
-  const sourceUrl = document.sourceUrls[0];
+  const hasBroadJurisdiction = ["通用", "多法域", "global"].includes(
+    document.jurisdiction.toLocaleLowerCase(),
+  );
+  const sourceUrl =
+    document.sourceUrls.length === 1 || !hasBroadJurisdiction
+      ? document.sourceUrls[0]
+      : undefined;
   return {
     sourceId: document.sourceId,
     title: document.title,
@@ -52,6 +59,7 @@ function toRegistryEntry(document: ReturnType<typeof parseKnowledgeFile>): Knowl
     evidenceStatus: document.evidenceStatus,
     lastVerified: document.lastVerified,
     excerpt: document.excerpt,
+    sourceUrls: [...document.sourceUrls],
     ...(sourceUrl ? { sourceUrl } : {}),
     ...(document.category ? { category: document.category } : {}),
   };

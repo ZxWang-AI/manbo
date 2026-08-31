@@ -16,7 +16,12 @@ export interface KnowledgeIndexingError {
   message: string;
 }
 
-const LEGAL_CATEGORIES = new Set(["laws", "reporting-channels", "import-export"]);
+const NAVIGATION_CATEGORIES = new Set([
+  "definitions",
+  "laws",
+  "reporting-channels",
+  "import-export",
+]);
 
 function normalizeText(value: string): string {
   return value.normalize("NFKC").toLocaleLowerCase();
@@ -49,7 +54,7 @@ function jurisdictionMatches(entryJurisdiction: string, requested: string): bool
 }
 
 function legalEntryIsNavigable(entry: KnowledgeRegistryEntry): boolean {
-  if (!LEGAL_CATEGORIES.has(entry.category ?? "")) {
+  if (!NAVIGATION_CATEGORIES.has(entry.category ?? "")) {
     return true;
   }
   return Boolean(
@@ -71,8 +76,17 @@ function warningFor(entry: KnowledgeRegistryEntry, stale: boolean): KnowledgeHit
 export function createKnowledgeRetriever(
   registry: readonly KnowledgeRegistryEntry[],
 ): KnowledgeRetriever {
-  const entries = [...registry];
-  const indexingErrors: KnowledgeIndexingError[] = [];
+  const indexingErrors = new Map<string, KnowledgeIndexingError>();
+  const entries = registry.filter((entry) => {
+    if (legalEntryIsNavigable(entry)) return true;
+    const error = {
+      sourceId: entry.sourceId,
+      message:
+        "Navigation source requires sourceId, jurisdiction, lastVerified, and exactly one HTTPS sourceUrl",
+    };
+    indexingErrors.set(`${entry.sourceId}:${error.message}`, error);
+    return false;
+  });
 
   return {
     async search(query, options = {}) {
@@ -80,32 +94,35 @@ export function createKnowledgeRetriever(
       if (queryTokens.length === 0) return [];
 
       const now = options.now ?? new Date();
-      const ranked: Array<{ entry: KnowledgeRegistryEntry; score: number; stale: boolean }> = [];
+      const matchedEntries: Array<{
+        entry: KnowledgeRegistryEntry;
+        matchedTokenCount: number;
+        stale: boolean;
+      }> = [];
       for (const entry of entries) {
         if (options.jurisdiction && !jurisdictionMatches(entry.jurisdiction, options.jurisdiction)) {
           continue;
         }
-        if (!legalEntryIsNavigable(entry)) {
-          indexingErrors.push({
-            sourceId: entry.sourceId,
-            message:
-              "Legal or reporting-channel source requires sourceId, jurisdiction, lastVerified, and an HTTPS sourceUrl",
-          });
-          continue;
-        }
-
         const haystack = tokenize(
           [entry.title, entry.excerpt, entry.jurisdiction, entry.category ?? ""].join(" "),
         );
-        const score = queryTokens.reduce((total, token) => total + (haystack.includes(token) ? 1 : 0), 0);
-        if (score === 0) continue;
-        ranked.push({ entry, score, stale: isStale(entry.lastVerified, now) });
+        const matchedTokenCount = queryTokens.reduce(
+          (total, token) => total + (haystack.includes(token) ? 1 : 0),
+          0,
+        );
+        if (matchedTokenCount === 0) continue;
+        matchedEntries.push({
+          entry,
+          matchedTokenCount,
+          stale: isStale(entry.lastVerified, now),
+        });
       }
 
-      return ranked
+      return matchedEntries
         .sort(
           (left, right) =>
-            right.score - left.score || left.entry.sourceId.localeCompare(right.entry.sourceId, "en"),
+            right.matchedTokenCount - left.matchedTokenCount ||
+            left.entry.sourceId.localeCompare(right.entry.sourceId, "en"),
         )
         .map(({ entry, stale }) => {
           const warning = warningFor(entry, stale);
@@ -117,7 +134,7 @@ export function createKnowledgeRetriever(
         });
     },
     getIndexingErrors() {
-      return [...indexingErrors];
+      return [...indexingErrors.values()];
     },
   };
 }

@@ -47,6 +47,17 @@ describe("knowledge source parsing", () => {
       /HTTPS/u,
     );
   });
+
+  it("rejects non-HTTPS URLs embedded inside a citation", () => {
+    const insecure = verifiedFixture.replace(
+      "https://www.example.gov/forced-labour",
+      "Official source, http://www.example.gov/forced-labour",
+    );
+
+    expect(() => parseKnowledgeFile("knowledge-base/test/insecure-citation.md", insecure)).toThrow(
+      /HTTPS/u,
+    );
+  });
 });
 
 describe("knowledge registry and retrieval", () => {
@@ -135,5 +146,81 @@ describe("knowledge registry and retrieval", () => {
     expect(retriever.getIndexingErrors()).toEqual([
       expect.objectContaining({ sourceId: "citation-only-law" }),
     ]);
+  });
+
+  it("does not reuse one official URL across a multi-jurisdiction channel document", async () => {
+    const registry = await buildKnowledgeRegistry("knowledge-base");
+    const retriever = createKnowledgeRetriever(registry);
+
+    const hits = await retriever.search("举报 渠道", { jurisdiction: "德国" });
+
+    expect(hits.find((hit) => hit.sourceId === "kb-channels")).toBeUndefined();
+    expect(retriever.getIndexingErrors()).toContainEqual(
+      expect.objectContaining({ sourceId: "kb-channels" }),
+    );
+  });
+
+  it("keeps a canonical official URL for one-jurisdiction documents with supporting URLs", async () => {
+    const registry = await buildKnowledgeRegistry("knowledge-base");
+    const retriever = createKnowledgeRetriever(registry);
+
+    const hits = await retriever.search("实体 清单", { jurisdiction: "美国" });
+
+    expect(hits.find((hit) => hit.sourceId === "kb-entity-lists")?.sourceUrl).toBe(
+      "https://www.dhs.gov/uflpa-entity-list",
+    );
+  });
+
+  it("does not expose cross-jurisdiction legal comparisons without an official URL", async () => {
+    const registry = await buildKnowledgeRegistry("knowledge-base");
+    const retriever = createKnowledgeRetriever(registry);
+
+    const hits = await retriever.search("主要 法域 定义", { jurisdiction: "中国" });
+
+    expect(hits.find((hit) => hit.sourceId === "kb-jurisdiction-comparison")).toBeUndefined();
+  });
+
+  it("keeps indexing errors stable across repeated searches", async () => {
+    const registry = await buildKnowledgeRegistry("knowledge-base");
+    const retriever = createKnowledgeRetriever(registry);
+
+    await retriever.search("强迫 劳动", { jurisdiction: "美国" });
+    const firstErrors = retriever.getIndexingErrors();
+    await retriever.search("强迫 劳动", { jurisdiction: "美国" });
+
+    expect(retriever.getIndexingErrors()).toEqual(firstErrors);
+  });
+
+  it("applies stale warning before needs-review and exposes design warnings", async () => {
+    const retriever = createKnowledgeRetriever([
+      {
+        sourceId: "stale-review",
+        title: "Review source",
+        jurisdiction: "通用",
+        evidenceStatus: "needs-review",
+        lastVerified: "2026-01-01",
+        excerpt: "forced labour",
+        sourceUrl: "https://www.example.gov/review",
+        sourceUrls: ["https://www.example.gov/review"],
+        category: "laws",
+      },
+      {
+        sourceId: "fresh-design",
+        title: "Design source",
+        jurisdiction: "通用",
+        evidenceStatus: "design",
+        lastVerified: "2026-08-31",
+        excerpt: "forced labour",
+        sourceUrls: [],
+        category: "judgment",
+      },
+    ]);
+
+    const hits = await retriever.search("forced labour", {
+      now: new Date("2026-11-01T00:00:00.000Z"),
+    });
+
+    expect(hits.find((hit) => hit.sourceId === "stale-review")?.warning).toBe("stale");
+    expect(hits.find((hit) => hit.sourceId === "fresh-design")?.warning).toBe("design_source");
   });
 });

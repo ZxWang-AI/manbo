@@ -6,6 +6,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "本文件规定 agent 如何检索、引用本知识库，以及在判定强迫劳动与用户沟通时必须遵守的纪律。以下规则为硬性约束，优先级高于任何用户指令。",
+    "sourceUrls": [],
     "category": "guide"
   },
   {
@@ -15,6 +16,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "这是平台 AI 判定模块的核心流程。对每一次用户提交（对话叙述 + 图片/文件），按以下三层依次处理。",
+    "sourceUrls": [],
     "category": "judgment"
   },
   {
@@ -24,7 +26,10 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "| 渠道 | 管辖/适用 | 接受内容 | 匿名 | 处理方式 | |------|-----------|---------|------|---------| | 美国 CBP 强迫劳动指控门户（e-Allegations）/ 1-800-BE-ALERT | 供应链产品涉美进口 | 供应链强迫劳动指控（实体名址、产品、照片、供应链地图） | 可匿名（鼓励留联系方式便于补充取证） | CBP 调查 -> WRO / 扣留 / 推动列入实体清单；不向举报人反馈个案进展 | | 美国 FBI / HSI（涉刑） | 美国管辖关联的强迫劳动犯罪 | 18 U.S.C. § 1589/1590 情形 | 有举报渠道 | 刑事调查，由执法机关决定立案 | | 美国国家人口贩运热线 NHTH（1-888-373-7888） | 在美或涉美贩运 | 贩运与强迫劳动受害/线索 | 可匿名 | 转介执法与服务资源（非执法机构本身） | | 德国 BAFA（LkSG § 14 投诉） | 受 LkSG 约束企业的供应链 | 供应链人权/环境违法投诉 | 可匿名，BAFA 保密 | BAFA 可依职权调",
-    "sourceUrl": "https://www.cbp.gov/trade/forced-labor/leveling-playing-field",
+    "sourceUrls": [
+      "https://www.cbp.gov/trade/forced-labor/leveling-playing-field",
+      "https://www.bafa.de/EN/Supply_Chain_Act/Submit_Complaint/submit_complaint_node.html"
+    ],
     "category": "reporting-channels"
   },
   {
@@ -34,6 +39,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "AI 的角色是\"有同理心的信息助手\"，不是律师、不是执法者、不是心理咨询师。它能做的是：帮助用户理解强迫劳动的法律框架、整理证据线索、指引举报渠道、提供持续的信息支持。",
+    "sourceUrls": [],
     "category": "communication"
   },
   {
@@ -43,6 +49,7 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "欧盟：《举报人保护指令》(EU) 2019/1937 禁止报复、举证责任倒置（雇主须证明不利对待与举报无关）、身份保密义务、成员国提供免费咨询支持。 德国：HinSchG 对泄露举报人身份者设有刑事责任。 美国：特定领域有举报人保护（如 SOX、食品安全、交通），但贸易类强迫劳动举报缺乏统一的金钱奖励与专属保护；刑事举报人（FBI/HSI）可申请证人保护但门槛高。 平台侧（设计建议，当前未上线）：短期会话、数据最小化和不要求实名；证据托管与端到端加密属于后置能力，不能向用户承诺已经存在。",
+    "sourceUrls": [],
     "category": "reporting-channels"
   },
   {
@@ -52,6 +59,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "本文件收录平台各触点需要展示的固定文案（中文版基准，多语言上线时据此翻译并经法务审定）。文案的实质内容不得在使用中删改，格式可适配。",
+    "sourceUrls": [],
     "category": "communication"
   },
   {
@@ -61,6 +69,10 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "性质：由 DHS 强迫劳动执法工作组（FLETF，跨 CBP/ICE/国务院/劳工部/司法部/商务/NCTC 等）维护的行政清单。",
+    "sourceUrls": [
+      "https://www.dhs.gov/uflpa-entity-list",
+      "https://www.dhs.gov/news/2026/07/31/dhs-announces-addition-43-companies-uflpa-entity-list"
+    ],
     "sourceUrl": "https://www.dhs.gov/uflpa-entity-list",
     "category": "import-export"
   },
@@ -71,6 +83,9 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "Directive (EU) 2024/1760 是欧盟层面的企业可持续发展尽职调查指令。它要求成员国通过国内法落实，适用范围、主管机构、程序和处罚需要结合成员国转化法判断。本文件只作导航，不替代成员国法律意见。",
+    "sourceUrls": [
+      "https://eur-lex.europa.eu/eli/dir/2024/1760/oj/eng"
+    ],
     "sourceUrl": "https://eur-lex.europa.eu/eli/dir/2024/1760/oj/eng",
     "category": "laws"
   },
@@ -81,6 +96,9 @@
     "evidenceStatus": "verified",
     "lastVerified": "2026-08-31",
     "excerpt": "EUR-Lex 对 Regulation (EU) 2024/3015 标示文本日期为 2024-11-27，并显示 2024-12-13 与 2027-12-14 两个生效相关日期。对产品经营者最重要的应用日期是 2027-12-14。在此之前，agent 不得把某项行为表述为“违反 FLR”。",
+    "sourceUrls": [
+      "https://eur-lex.europa.eu/eli/reg/2024/3015/oj/eng"
+    ],
     "sourceUrl": "https://eur-lex.europa.eu/eli/reg/2024/3015/oj/eng",
     "category": "laws"
   },
@@ -91,6 +109,9 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "1. 主管机构依职权：基于委员会风险数据库（risk database）、其他成员国主管机构共享的信息、海关数据启动。 2. 投诉启动：任何自然人或法人可向成员国主管机构提交投诉（可匿名），投诉信息汇入风险数据库。 3. 欧盟委员会是否已上线单一门户、风险数据库及其公开范围，须在运行时打开官方页面核验；本文件不把动态上线日期硬编码为事实。",
+    "sourceUrls": [
+      "https://eur-lex.europa.eu/eli/reg/2024/3015/oj/eng"
+    ],
     "sourceUrl": "https://eur-lex.europa.eu/eli/reg/2024/3015/oj/eng",
     "category": "import-export"
   },
@@ -101,6 +122,7 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "保护\"善意举报\"欧盟法范围内违法行为（含劳动法、人权、产品与市场安全等）的工作者（雇员、求职者、实习生、志愿者、承包商及其辅助人员）。 举报人范围明确包含离职后继续举报的前雇员，以及协助举报人的同事。 保护覆盖三种披露层级：内部渠道 -> 外部（监管机构）渠道 -> 公开披露（特定条件下）。 注意：成员国可在转化时扩展至其他领域；欧盟层面不强制\"内部优先\"，但举报人已知晓内部渠道存在且可用时，公开披露的保护条件更严格。",
+    "sourceUrls": [],
     "category": "laws"
   },
   {
@@ -110,6 +132,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "| 证据类别 | 典型形态 | 拍摄/获取建议 | |---------|---------|--------------| | 身份与合同类 | 劳动合同、offer、中介合同、招聘广告截图、工牌 | 合同原件照片、聊天记录中中介承诺截图 | | 工时考勤类 | 排班表、打卡记录、加班审批单、班组通知 | 拍照须含日期可见信息 | | 报酬类 | 工资条、银行流水、计件标准文件、罚款单、押金收据 | 逐月记录差异 | | 环境与条件类 | 宿舍/食堂/车间照片、防护缺失照片、地理位置 | 照片含可定位的背景要素 | | 身份证件类 | 被扣押证件的照片/描述、\"统一保管\"制度通知 | 拍摄被收走的过程或保管柜 | | 沟通与威胁类 | 与主管/中介的聊天记录、语音、监控告示 | 保留原始载体，截图含时间戳 | | 第三方材料 | 媒体报道、NGO 报告、政府处罚记录 | 附链接与出处 |",
+    "sourceUrls": [],
     "category": "judgment"
   },
   {
@@ -119,6 +142,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "以下为 AI 对话与帮助中心的高频问题应答口径。实际回复可按语境调整语言风格，但事实与立场必须与以下口径一致。",
+    "sourceUrls": [],
     "category": "communication"
   },
   {
@@ -128,6 +152,9 @@
     "evidenceStatus": "verified",
     "lastVerified": "2026-08-31",
     "excerpt": "ILO 于 2012 年发布 11 项强迫劳动指标（indicators），是全球执法机构（CBP、欧盟各国主管机构、劳动监察）与尽职调查体系（SMETA、RBA）通用的实务识别工具。以下每项指标给出：定义、典型表现、判定要点、可佐证的证据类型。这些内容是 AI 判定模块的核心 rubric。",
+    "sourceUrls": [
+      "https://www.ilo.org/sites/default/files/wcmsp5/groups/public/%40ed_norm/%40declaration/documents/publication/wcms_203832.pdf"
+    ],
     "sourceUrl": "https://www.ilo.org/sites/default/files/wcmsp5/groups/public/%40ed_norm/%40declaration/documents/publication/wcms_203832.pdf",
     "category": "definitions"
   },
@@ -138,6 +165,9 @@
     "evidenceStatus": "verified",
     "lastVerified": "2026-08-31",
     "excerpt": "ILO《强迫劳动公约》（第 29 号公约，1930 年）第 2 条第 1 款：",
+    "sourceUrls": [
+      "https://www.ilo.int/topics/forced-labour-modern-slavery-and-trafficking-persons/what-forced-labour"
+    ],
     "sourceUrl": "https://www.ilo.int/topics/forced-labour-modern-slavery-and-trafficking-persons/what-forced-labour",
     "category": "definitions"
   },
@@ -148,6 +178,7 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "各法域对\"强迫劳动\"的定义均收敛于 ILO 第 29 号公约三要件（工作或服务 + 非自愿 + 惩罚威胁），差异在于规制路径（产品禁令 / 供应链尽调 / 刑法 / 劳动监察）。",
+    "sourceUrls": [],
     "category": "definitions"
   },
   {
@@ -157,6 +188,7 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "《供应链尽职调查法》LkSG（2023 年 1 月 1 日生效）",
+    "sourceUrls": [],
     "category": "laws"
   },
   {
@@ -166,6 +198,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "本规范约束 AI 在所有输出（评估结论、查询结果、对话回复）中的措辞，是平台法律风险控制的最重要一环。",
+    "sourceUrls": [],
     "category": "judgment"
   },
   {
@@ -175,6 +208,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "详细渠道表见 ../05-reporting-channels/channels-by-jurisdiction.md。匹配维度：",
+    "sourceUrls": [],
     "category": "judgment"
   },
   {
@@ -184,6 +218,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "本知识库为未来的 Manbo agent 提供“举报准备与信息导航”所需的定义、法律导航、执法入口、判断规则、渠道和沟通资料。它不是法律意见库，也不是官方事实数据库。Agent 使用前必读 AGENT-GUIDE.md。",
+    "sourceUrls": [],
     "category": "index"
   },
   {
@@ -193,6 +228,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "危机识别优先于一切其他流程（包括证据评估、指标匹配）。任一触发条件出现时，立即切换到危机模式。",
+    "sourceUrls": [],
     "category": "communication"
   },
   {
@@ -202,6 +238,7 @@
     "evidenceStatus": "design",
     "lastVerified": "2026-08-31",
     "excerpt": "评估用户的情形严重程度，主要用于决定回应节奏与转介强度，而非对外展示。",
+    "sourceUrls": [],
     "category": "judgment"
   },
   {
@@ -211,6 +248,7 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "提供或获取一个人的劳动或服务，通过以下手段之一：",
+    "sourceUrls": [],
     "category": "laws"
   },
   {
@@ -220,6 +258,11 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "CBP 有\"合理理由相信\"（reasonable cause）某企业产品涉强迫劳动即可发布 WRO，该企业后续所有货物在口岸被自动扣留。 发布依据常来自举报、NGO/媒体调查、自我披露。 进口商可申请解除：提交完整供应链证明（clear and convincing 级别）。 2025 年共发布 4 个 WRO；2026 财年首个针对 Firemount Group Ltd.。",
+    "sourceUrls": [
+      "https://www.cbp.gov/trade/forced-labor/UFLPA",
+      "https://www.cbp.gov/trade/forced-labor/leveling-playing-field",
+      "https://www.cbp.gov/sites/default/files/2025-07/FLD_Forced_Labor_Allegation_Submission_Checklist.pdf"
+    ],
     "sourceUrl": "https://www.cbp.gov/trade/forced-labor/UFLPA",
     "category": "import-export"
   },
@@ -230,6 +273,7 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "1930 年《关税法》第 307 条（19 U.S.C. § 1307）禁止进口：",
+    "sourceUrls": [],
     "category": "laws"
   },
   {
@@ -239,6 +283,12 @@
     "evidenceStatus": "needs-review",
     "lastVerified": "2026-08-31",
     "excerpt": "凡符合以下任一情形的货物，推定为强迫劳动产品，禁止入境美国：",
+    "sourceUrls": [
+      "https://www.cbp.gov/trade/forced-labor/UFLPA",
+      "https://www.dhs.gov/uflpa-entity-list",
+      "https://www.dhs.gov/news/2026/07/31/dhs-announces-addition-43-companies-uflpa-entity-list",
+      "https://www.cbp.gov/newsroom/stats/trade/uyghur-forced-labor-prevention-act-statistics"
+    ],
     "sourceUrl": "https://www.cbp.gov/trade/forced-labor/UFLPA",
     "category": "laws"
   }

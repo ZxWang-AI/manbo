@@ -14,8 +14,14 @@ describe("home page", () => {
 
   it("places the AI identity on the left and the user identity on the right", () => {
     const html = renderToStaticMarkup(HomePage());
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const assistant = template.content.querySelector('[data-message-role="assistant"]');
+    const user = template.content.querySelector('[data-message-role="user"]');
 
-    expect(html).toMatch(/data-message-role="assistant"[^>]*>[\s\S]*data-avatar-position="left"/);
-    expect(html).toMatch(/data-message-role="user"[^>]*>[\s\S]*data-avatar-position="right"/);
+    expect(assistant?.querySelector('[data-avatar-position="left"]')).not.toBeNull();
+    expect(assistant?.firstElementChild?.getAttribute("data-avatar-position")).toBe("left");
+    expect(user?.querySelector('[data-avatar-position="right"]')).not.toBeNull();
+    expect(user?.lastElementChild?.getAttribute("data-avatar-position")).toBe("right");
   });
 });

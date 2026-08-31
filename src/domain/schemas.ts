@@ -15,6 +15,7 @@ export {
   legalNavigationItemSchema,
   legalStatusSchema,
   legalStatusValues,
+  prohibitedAssessmentFieldsSchema,
   referralOptionSchema,
   safetyFlagSchema,
   safetyFlagValues,

@@ -1,9 +1,32 @@
 import Ajv from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import caseRecordJsonSchema from "@/domain/case-record.schema.json";
-import { caseRecordSchema } from "@/domain/schemas";
+import {
+  aiReviewStatusValues,
+  caseRecordSchema,
+  prohibitedAssessmentFieldsSchema,
+} from "@/domain/schemas";
 import { makeCaseRecordFixture } from "../fixtures/case-record";
+
+function makeJsonSchemaValidator() {
+  return new Ajv({
+    strict: false,
+    formats: {
+      "date-time": true,
+      date: true,
+      uri: (value: string) => {
+        try {
+          const parsed = new URL(value);
+          return Boolean(parsed.protocol && parsed.hostname);
+        } catch {
+          return false;
+        }
+      },
+    },
+  }).compile(caseRecordJsonSchema);
+}
 
 describe("CaseRecord schema", () => {
   it("accepts the qualitative golden fixture with required evidence context", () => {
@@ -16,9 +39,7 @@ describe("CaseRecord schema", () => {
   });
 
   it("validates the same fixture with the published JSON Schema", () => {
-    const validate = new Ajv({ strict: false, formats: { "date-time": true, date: true } }).compile(
-      caseRecordJsonSchema,
-    );
+    const validate = makeJsonSchemaValidator();
 
     expect(validate(makeCaseRecordFixture())).toBe(true);
     expect(validate.errors).toBeNull();
@@ -66,12 +87,12 @@ describe("CaseRecord schema", () => {
   it("does not allow an assessment item with neither basis nor missing information", () => {
     const validRecord = makeCaseRecordFixture();
 
-    expect(() =>
+    expect(
       caseRecordSchema.parse({
         ...validRecord,
         iloIndicators: [{ indicatorId: 1, status: "insufficient", basis: [], missing: [] }],
-      }),
-    ).toThrow();
+      }).iloIndicators[0],
+    ).toEqual({ indicatorId: 1, status: "insufficient", basis: [], missing: [] });
   });
 
   it("accepts only the four workflow statuses and validates ISO dates", () => {
@@ -82,6 +103,29 @@ describe("CaseRecord schema", () => {
       caseRecordSchema.parse({ ...validRecord, createdAt: "31-08-2026" }),
     ).toThrow();
 
-    expect(["ready_for_preparation", "needs_more_information", "out_of_scope", "safety_referral"]).toHaveLength(4);
+    expect(aiReviewStatusValues).toHaveLength(4);
+    expect(() =>
+      caseRecordSchema.parse({ ...validRecord, aiReviewStatus: "approved" }),
+    ).toThrow();
+  });
+
+  it("keeps the checked-in JSON Schema identical to the Zod contract", () => {
+    expect(caseRecordJsonSchema).toEqual(z.toJSONSchema(caseRecordSchema));
+  });
+
+  it("validates URL formats consistently in Zod and Ajv", () => {
+    const invalid = makeCaseRecordFixture();
+    invalid.legalNavigation[0]!.officialUrl = "https://";
+    const validate = makeJsonSchemaValidator();
+
+    expect(() => caseRecordSchema.parse(invalid)).toThrow();
+    expect(validate(invalid)).toBe(false);
+  });
+
+  it("exposes an explicit negative helper for prohibited assessment fields", () => {
+    expect(prohibitedAssessmentFieldsSchema.safeParse({ topic: "timeline" }).success).toBe(true);
+    for (const key of ["score", "probability", "rank", "rating", "successRate"]) {
+      expect(prohibitedAssessmentFieldsSchema.safeParse({ [key]: 1 }).success).toBe(false);
+    }
   });
 });
