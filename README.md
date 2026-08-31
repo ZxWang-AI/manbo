@@ -1,12 +1,15 @@
-# is-your-labor-forced
+# 慢波 Manbo (Forced-Labor-Detector)
 
-A site for forced labor report & detection — 一个面向全球的强迫劳动举报与识别平台（开发中）。
+A site for forced labor report & detection - 一个面向全球的强迫劳动举报与识别平台（开发中）。
+
+> 波如正义，不需要快，但是会来。如星星之火，可以燎原。
+> Waves, like justice, need not be fast, but they will come. A single spark can start a prairie fire.
 
 [English](#what-this-project-is) | [中文](#项目简介)
 
 ## What this project is
 
-is-your-labor-forced is a reporting platform for people who suspect they are experiencing forced labor. It is being built around four capabilities:
+Manbo is a reporting platform for people who suspect they are experiencing forced labor. The name comes from the Chinese 慢波 (màn bō, "slow wave") - justice, like a wave, need not be fast, but it will come. It is being built around four capabilities:
 
 - **AI-assisted assessment.** A conversational agent grounded in an ILO-based indicator framework helps users describe their situation, matches it against the 11 forced labor indicators, and maps the relevant laws by jurisdiction. The agent never issues legal conclusions — it reports risk signals and evidence gaps.
 - **Evidence packaging.** Users can attach photos, documents, and narrative descriptions. Content fingerprints (not device fingerprints) support duplicate detection and cross-user case grouping without identifying individuals.
@@ -68,7 +71,7 @@ The project owner maintains a permanent neutral stance and does not side with an
 
 ## 项目简介
 
-is-your-labor-forced 是一个面向全球劳动者的强迫劳动举报与识别平台，处于研究与规划阶段。平台围绕四项能力设计：
+慢波（Manbo / Forced-Labor-Detector）是一个面向全球劳动者的强迫劳动举报与识别平台，处于研究与规划阶段。名字取自"波如正义，不需要快，但是会来"——如星星之火，可以燎原。平台围绕四项能力设计：
 
 - **AI 辅助判定。** 以 ILO 指标框架为知识基础的对话式 agent，帮助用户描述处境、对照 11 项强迫劳动指标、映射所在法域的法律。agent 不输出法律结论，只呈现风险信号与证据缺口。
 - **证据包提交。** 用户可上传照片、文件并填写文字描述。平台使用内容指纹（而非设备指纹）做去重与跨用户关联，不识别个人身份。
