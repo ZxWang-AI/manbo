@@ -147,7 +147,7 @@ Expected: FAIL because the package scripts and Vitest configuration do not exist
 corepack enable
 corepack prepare pnpm@11.24.0 --activate
 pnpm add --save-exact next@16.3.3 react@19.2.8 react-dom@19.2.8 @prisma/client@6.19.3 zod@4.5.4 ajv@8.20.0 argon2@0.45.1 gray-matter@4.0.3
-pnpm add -D --save-exact typescript@5.9.3 @types/node@22.20.1 @types/react@19.2.18 @types/react-dom@19.2.5 prisma@6.19.3 eslint@10.9.1 eslint-config-next@16.3.3 vitest@4.1.11 happy-dom@20.12.0 @playwright/test@1.62.1 @axe-core/playwright@4.13.0 tsx@4.23.13
+pnpm add -D --save-exact typescript@5.9.3 @types/node@22.20.1 @types/react@19.2.18 @types/react-dom@19.2.5 prisma@6.19.3 eslint@9.39.5 eslint-config-next@16.3.3 vitest@4.1.11 happy-dom@20.12.0 @playwright/test@1.62.1 @axe-core/playwright@4.13.0 tsx@4.23.13
 ```
 
 Expected: `pnpm-lock.yaml` is created and every direct dependency has an exact version. `package.json` must then define this runtime contract and scripts:
@@ -175,7 +175,7 @@ Expected: `pnpm-lock.yaml` is created and every direct dependency has an exact v
 }
 ```
 
-`eslint.config.mjs` uses the ESLint 10 flat configuration and Next.js presets; do not call `next lint`:
+`eslint.config.mjs` uses the ESLint 9 flat configuration and Next.js presets; do not call `next lint`. ESLint 9.39.5 is the newest 9.x compatible with the React plugins bundled by `eslint-config-next@16.3.3`; ESLint 10.9.1 causes `react/display-name` to fail while loading because the plugin peer contract only supports ESLint 9:
 
 ```js
 import { defineConfig, globalIgnores } from "eslint/config";
