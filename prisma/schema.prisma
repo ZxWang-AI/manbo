@@ -142,6 +142,23 @@ enum MaterialStatus {
   deleted
 }
 
+enum MaterialProcessingState {
+  uploading
+  quarantined
+  scanning
+  saved_unread
+  parse_queued
+  parsed
+  blocked_malicious
+  scan_failed
+}
+
+enum MaterialSignatureStatus {
+  match
+  mismatch
+  unknown
+}
+
 model CaseStorageUsage {
   caseId        String   @id @map("case_id") @db.Uuid
   accountId     String   @map("account_id") @db.Char(32)
@@ -157,27 +174,55 @@ model CaseStorageUsage {
 }
 
 model Material {
-  materialId       String         @id @map("material_id") @db.Uuid
-  caseId           String         @map("case_id") @db.Uuid
-  accountId        String         @map("account_id") @db.Char(32)
-  status           MaterialStatus @default(reserved)
-  declaredBytes    BigInt         @map("declared_bytes")
-  usedBytes        BigInt?        @map("used_bytes")
-  objectKey        String?        @map("object_key") @db.VarChar(180)
-  sha256           String?        @db.Char(64)
-  encryptionScheme String?        @map("encryption_scheme") @db.VarChar(32)
-  keyVersion       String?        @map("key_version") @db.VarChar(80)
-  wrappedKey       String?        @map("wrapped_key") @db.Text
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  completedAt      DateTime?      @map("completed_at") @db.Timestamptz(3)
-  deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz(3)
+  materialId        String                  @id @map("material_id") @db.Uuid
+  caseId            String                  @map("case_id") @db.Uuid
+  accountId         String                  @map("account_id") @db.Char(32)
+  status            MaterialStatus          @default(reserved)
+  declaredBytes     BigInt                  @map("declared_bytes")
+  usedBytes         BigInt?                 @map("used_bytes")
+  objectKey         String?                 @map("object_key") @db.VarChar(180)
+  sha256            String?                 @db.Char(64)
+  encryptionScheme  String?                 @map("encryption_scheme") @db.VarChar(32)
+  keyVersion        String?                 @map("key_version") @db.VarChar(80)
+  wrappedKey        String?                 @map("wrapped_key") @db.Text
+  originalFilename  String?                 @map("original_filename") @db.VarChar(255)
+  declaredMime      String?                 @map("declared_mime") @db.VarChar(160)
+  detectedMime      String?                 @map("detected_mime") @db.VarChar(160)
+  signatureStatus   MaterialSignatureStatus @default(unknown) @map("signature_status")
+  processingState   MaterialProcessingState @default(quarantined) @map("processing_state")
+  processingVersion Int                     @default(1) @map("processing_version")
+  eligibleForAi     Boolean                 @default(false) @map("eligible_for_ai")
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  completedAt       DateTime?               @map("completed_at") @db.Timestamptz(3)
+  deletedAt         DateTime?               @map("deleted_at") @db.Timestamptz(3)
 
   case           CaseRecord              @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
   objectVersions MaterialObjectVersion[]
+  derivatives    MaterialDerivative[]
 
   @@unique([materialId, caseId, accountId])
   @@index([caseId, accountId, status])
   @@map("materials")
+}
+
+model MaterialDerivative {
+  derivativeId    String   @id @map("derivative_id") @db.Uuid
+  materialId      String   @map("material_id") @db.Uuid
+  caseId          String   @map("case_id") @db.Uuid
+  accountId       String   @map("account_id") @db.Char(32)
+  contentRef      String   @map("content_ref") @db.VarChar(180)
+  parserId        String   @map("parser_id") @db.VarChar(80)
+  parserVersion   String   @map("parser_version") @db.VarChar(40)
+  sourceObjectKey String   @map("source_object_key") @db.VarChar(180)
+  sourceSha256    String   @map("source_sha256") @db.Char(64)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  material Material @relation(fields: [materialId, caseId, accountId], references: [materialId, caseId, accountId], onDelete: Cascade)
+
+  @@unique([materialId, contentRef])
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("material_derivatives")
 }
 
 model MaterialObjectVersion {
