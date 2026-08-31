@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CaseVisibility {
+  private
+}
+
+enum CaseLifecycle {
+  draft
+  confirmed
+  exported
+  deleted
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+}
+
+enum AuditAction {
+  create
+  update
+  export
+  delete
+}
+
+enum CleanupStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+model Account {
+  accountId          String   @id @map("account_id") @db.Char(32)
+  alias              String   @unique @db.VarChar(80)
+  aliasHash          String   @unique @map("alias_hash") @db.Char(64)
+  recoverySecretHash String   @map("recovery_secret_hash") @db.Text
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  cases       CaseRecord[]
+  sessions    AuthSession[]
+  auditEvents AuditEvent[]
+  cleanupJobs CleanupJob[]
+
+  @@index([createdAt])
+  @@map("accounts")
+}
+
+model AuthSession {
+  sessionIdHash     String    @id @map("session_id_hash") @db.Char(64)
+  accountId         String    @map("account_id") @db.Char(32)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt        DateTime  @map("last_seen_at") @db.Timestamptz(3)
+  idleExpiresAt     DateTime  @map("idle_expires_at") @db.Timestamptz(3)
+  absoluteExpiresAt DateTime  @map("absolute_expires_at") @db.Timestamptz(3)
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  account Account @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
+
+  @@index([idleExpiresAt])
+  @@index([absoluteExpiresAt])
+  @@map("auth_sessions")
+}
+
+model RecoveryThrottle {
+  aliasHash       String    @id @map("alias_hash") @db.Char(64)
+  failedCount     Int       @default(0) @map("failed_count")
+  windowStartedAt DateTime  @map("window_started_at") @db.Timestamptz(3)
+  blockedUntil    DateTime? @map("blocked_until") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([blockedUntil])
+  @@map("recovery_throttles")
+}
+
+model CaseRecord {
+  caseId           String         @id @map("case_id") @db.Uuid
+  accountId        String         @map("account_id") @db.Char(32)
+  schemaVersion    String         @map("schema_version") @db.VarChar(16)
+  visibility       CaseVisibility @default(private)
+  lifecycle        CaseLifecycle  @default(draft)
+  version          Int            @default(1)
+  jurisdiction     Json
+  facts            Json
+  timeline         Json
+  iloIndicators    Json           @map("ilo_indicators")
+  elements         Json
+  evidenceCoverage Json           @map("evidence_coverage")
+  legalNavigation  Json           @map("legal_navigation")
+  referrals        Json
+  safetyFlags      Json           @map("safety_flags")
+  sourceTrace      Json           @map("source_trace")
+  consent          Json
+  aiReviewStatus   String?        @map("ai_review_status") @db.VarChar(40)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz(3)
+
+  account  Account               @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+  messages ConversationMessage[]
+  consents ConsentEvent[]
+
+  @@unique([caseId, accountId])
+  @@index([accountId, lifecycle])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@map("case_records")
+}
+
+model ConversationMessage {
+  messageId String      @id @map("message_id") @db.Uuid
+  caseId    String      @map("case_id") @db.Uuid
+  accountId String      @map("account_id") @db.Char(32)
+  role      MessageRole
+  content   String      @db.Text
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  case CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("conversation_messages")
+}
+
+model ConsentEvent {
+  consentEventId String   @id @map("consent_event_id") @db.Uuid
+  caseId         String   @map("case_id") @db.Uuid
+  accountId      String   @map("account_id") @db.Char(32)
+  consentVersion String   @map("consent_version") @db.VarChar(64)
+  snapshot       Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  case CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("consent_events")
+}
+
+model AuditEvent {
+  auditEventId String      @id @map("audit_event_id") @db.Uuid
+  accountId    String      @map("account_id") @db.Char(32)
+  caseId       String?     @map("case_id") @db.Uuid
+  action       AuditAction
+  metadata     Json
+  occurredAt   DateTime    @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  account Account @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+
+  @@index([occurredAt])
+  @@map("audit_events")
+}
+
+model CleanupJob {
+  cleanupJobId String        @id @map("cleanup_job_id") @db.Uuid
+  accountId    String        @map("account_id") @db.Char(32)
+  caseId       String?       @map("case_id") @db.Uuid
+  target       String        @db.VarChar(64)
+  status       CleanupStatus @default(pending)
+  attempts     Int           @default(0)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  completedAt  DateTime?     @map("completed_at") @db.Timestamptz(3)
+
+  account Account @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("cleanup_jobs")
+}
