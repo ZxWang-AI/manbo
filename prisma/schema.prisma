@@ -29,6 +29,7 @@ enum AuditAction {
   update
   export
   delete
+  consent_change
 }
 
 enum CleanupStatus {
@@ -105,15 +106,32 @@ model CaseRecord {
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz(3)
 
-  account  Account               @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
-  messages ConversationMessage[]
-  consents ConsentEvent[]
+  account   Account               @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+  messages  ConversationMessage[]
+  consents  ConsentEvent[]
+  revisions CaseRecordRevision[]
 
   @@unique([caseId, accountId])
   @@index([accountId, lifecycle])
   @@index([createdAt])
   @@index([updatedAt])
   @@map("case_records")
+}
+
+model CaseRecordRevision {
+  revisionId String   @id @map("revision_id") @db.Uuid
+  caseId     String   @map("case_id") @db.Uuid
+  accountId  String   @map("account_id") @db.Char(32)
+  version    Int
+  snapshot   Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  case CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+
+  @@unique([caseId, version])
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("case_record_revisions")
 }
 
 model ConversationMessage {

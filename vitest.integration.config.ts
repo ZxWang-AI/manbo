@@ -16,6 +16,7 @@ export default defineConfig({
       DATABASE_URL:
         process.env.DATABASE_URL ??
         "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public",
+      MANBO_TEST_DATABASE_RESET: "confirmed",
     },
     fileParallelism: false,
     include: ["tests/integration/**/*.test.ts"],

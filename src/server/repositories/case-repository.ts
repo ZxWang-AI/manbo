@@ -49,6 +49,11 @@ export class ConcurrencyConflict extends Error {
 export interface CaseRepository {
   createDraft(accountId: string, draft: CaseDraft): Promise<CaseRecord>;
   getPrivate(accountId: string, caseId: string): Promise<CaseRecord | null>;
+  getVersionPrivate(
+    accountId: string,
+    caseId: string,
+    version: number,
+  ): Promise<CaseRecord | null>;
   updatePrivate(
     accountId: string,
     caseId: string,
@@ -62,7 +67,7 @@ function jsonInput(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-function toDomainRecord(row: PersistedCaseRecord): CaseRecord {
+export function toDomainRecord(row: PersistedCaseRecord): CaseRecord {
   return caseRecordSchema.parse({
     schemaVersion: row.schemaVersion,
     caseId: row.caseId,
@@ -86,6 +91,23 @@ function toDomainRecord(row: PersistedCaseRecord): CaseRecord {
     ...(row.deletedAt ? { deletedAt: row.deletedAt.toISOString() } : {}),
     ...(row.aiReviewStatus ? { aiReviewStatus: row.aiReviewStatus } : {}),
   });
+}
+
+export async function appendCaseRevision(
+  transaction: Prisma.TransactionClient,
+  row: PersistedCaseRecord,
+): Promise<CaseRecord> {
+  const snapshot = toDomainRecord(row);
+  await transaction.caseRecordRevision.create({
+    data: {
+      revisionId: randomUUID(),
+      caseId: row.caseId,
+      accountId: row.accountId,
+      version: row.version,
+      snapshot: jsonInput(snapshot),
+    },
+  });
+  return snapshot;
 }
 
 function auditMetadata(version: number): Prisma.InputJsonObject {
@@ -137,6 +159,7 @@ export class PrismaCaseRepository implements CaseRepository {
           metadata: auditMetadata(1),
         },
       });
+      await appendCaseRevision(transaction, created);
       return created;
     });
 
@@ -148,6 +171,37 @@ export class PrismaCaseRepository implements CaseRepository {
       where: { accountId, caseId, visibility: "private", deletedAt: null },
     });
     return row ? toDomainRecord(row) : null;
+  }
+
+  async getVersionPrivate(
+    accountId: string,
+    caseId: string,
+    version: number,
+  ): Promise<CaseRecord | null> {
+    if (!Number.isInteger(version) || version < 1) {
+      return null;
+    }
+    const revision = await this.database.caseRecordRevision.findFirst({
+      where: {
+        accountId,
+        caseId,
+        version,
+        case: { is: { accountId, caseId, visibility: "private", deletedAt: null } },
+      },
+      select: { snapshot: true },
+    });
+    if (!revision) {
+      return null;
+    }
+    const snapshot = caseRecordSchema.parse(revision.snapshot);
+    if (
+      snapshot.accountId !== accountId ||
+      snapshot.caseId !== caseId ||
+      snapshot.version !== version
+    ) {
+      throw new Error("Case revision snapshot does not match its ownership metadata");
+    }
+    return snapshot;
   }
 
   async updatePrivate(
@@ -207,6 +261,7 @@ export class PrismaCaseRepository implements CaseRepository {
       if (!row) {
         throw new ConcurrencyConflict();
       }
+      await appendCaseRevision(transaction, row);
       await transaction.auditEvent.create({
         data: {
           auditEventId: randomUUID(),
@@ -235,6 +290,13 @@ export class PrismaCaseRepository implements CaseRepository {
       if (deleted.count === 0) {
         return;
       }
+      const deletedRow = await transaction.caseRecord.findFirst({
+        where: { accountId, caseId, visibility: "private", lifecycle: "deleted" },
+      });
+      if (!deletedRow) {
+        throw new ConcurrencyConflict();
+      }
+      await appendCaseRevision(transaction, deletedRow);
       await transaction.auditEvent.create({
         data: {
           auditEventId: randomUUID(),

@@ -68,6 +68,8 @@
 ### 持久化与适配器
 
 - Create: `prisma/schema.prisma`, `src/server/repositories/*.ts`
+- Create: `src/media/storage/`, `src/media/security/`, `src/media/parsers/`, `src/media/transcription/`
+- Create: `src/server/admin/`, `src/app/(admin)/admin/`, `src/app/api/admin/`
 - Create: `src/connectors/connector.ts`, `src/connectors/export/markdown.ts`, `src/connectors/export/json.ts`
 - Create: `src/server/audit.ts`, `src/server/redaction.ts`
 
@@ -670,10 +672,14 @@ git commit -m "feat: add crisis-first AI orchestration"
 - Create: `src/server/db.ts`
 - Create: `src/server/repositories/account-repository.ts`
 - Create: `src/server/repositories/case-repository.ts`
+- Create: `src/server/repositories/private-case-lock.ts`
 - Create: `src/server/repositories/message-repository.ts`
 - Create: `src/server/repositories/consent-repository.ts`
 - Create: `tests/setup/integration.ts`
 - Create: `tests/integration/case-repository.test.ts`
+- Create: `tests/unit/case-history.test.ts`
+- Create: `tests/unit/persistence-races.test.ts`
+- Create: `tests/unit/test-database-guard.test.ts`
 
 **Interfaces:**
 
@@ -681,6 +687,7 @@ git commit -m "feat: add crisis-first AI orchestration"
 export interface CaseRepository {
   createDraft(accountId: string, draft: CaseDraft): Promise<CaseRecord>;
   getPrivate(accountId: string, caseId: string): Promise<CaseRecord | null>;
+  getVersionPrivate(accountId: string, caseId: string, version: number): Promise<CaseRecord | null>;
   updatePrivate(accountId: string, caseId: string, patch: CasePatch, expectedVersion: number): Promise<CaseRecord>;
   markDeleted(accountId: string, caseId: string): Promise<void>;
 }
@@ -719,9 +726,9 @@ Expected: FAIL because Prisma schema, migration, and repositories are missing; t
 
 - [ ] **Step 3: Implement Prisma models**
 
-Create Prisma models `Account`, `CaseRecord`, `ConversationMessage`, `ConsentEvent`, `AuditEvent`, and `CleanupJob`. `CaseRecord` stores the Task 2 arrays/objects in JSON columns and validates them with Zod on every repository ingress/egress; `visibility` is constrained to `private`, `lifecycle` supports `draft`, `confirmed`, `exported`, `deleted`, and `version` is incremented atomically. Add indexes only on `(accountId, lifecycle)`, `(caseId, accountId)`, cleanup status, and timestamps—never on narrative text or company names. Do not create `EvidenceBlob`, public report, ranking, or event-cluster tables in MVP.
+Create Prisma models `Account`, `CaseRecord`, `CaseRecordRevision`, `ConversationMessage`, `ConsentEvent`, `AuditEvent`, and `CleanupJob`. `CaseRecord` stores the current Task 2 arrays/objects in JSON columns and validates them with Zod on every repository ingress/egress; every create, update, consent change, AI review, and deletion also appends a Zod-validated immutable `CaseRecordRevision` snapshot in the same transaction. `visibility` is constrained to `private`, `lifecycle` supports `draft`, `confirmed`, `exported`, `deleted`, and `version` is incremented atomically. Add indexes only on `(accountId, lifecycle)`, `(caseId, accountId)`, `(caseId, version)`, cleanup status, and timestamps—never on narrative text or company names. Task 5 只建立身份、案件和消息基线；原始材料元数据与对象存储由 Task 5A–5C 增量迁移实现。不得创建 public report、ranking 或 event-cluster 表。
 
-`compose.yaml` defines only an isolated `postgres:16.15-bookworm` service named `test-db`, database `manbo_test`, port `55432`, a healthcheck using `pg_isready`, and a named test volume. `vitest.integration.config.ts` includes only `tests/integration/**/*.test.ts`, sets `fileParallelism: false`, injects the local test URL when `DATABASE_URL` is absent, and loads `tests/setup/integration.ts`; setup truncates only tables in the `manbo_test` database and aborts if the URL does not contain `manbo_test`.
+`compose.yaml` defines only an isolated `postgres:16.15-bookworm` service named `test-db`, database `manbo_test`, port `55432`, a healthcheck using `pg_isready`, and a named test volume. `vitest.integration.config.ts` includes only `tests/integration/**/*.test.ts`, sets `fileParallelism: false`, injects the local test URL when `DATABASE_URL` is absent, and loads `tests/setup/integration.ts`; setup requires an explicit destructive-test confirmation and accepts only the fixed `manbo`/`manbo_test`/`public` combination on `127.0.0.1:55432`, `localhost:55432`, or the Compose host `test-db:5432`. Any other host, port, user, database, or schema aborts before cleanup.
 
 - [ ] **Step 4: Implement pseudonymous credentials**
 
@@ -729,7 +736,7 @@ Generate a 128-bit random `accountId`, human-readable random alias, and 256-bit 
 
 - [ ] **Step 5: Implement ownership-checked repositories**
 
-Every read/update/delete query includes both `accountId` and `caseId`; deleted records are excluded by default. `updatePrivate()` uses `updateMany({ where: { accountId, caseId, version: expectedVersion, deletedAt: null } })` and throws `ConcurrencyConflict` when the affected row count is zero. Persist a minimal audit event for create/update/export/delete without IP, device identifiers, narrative, fact values, or source quotes.
+Every read/update/delete query includes both `accountId` and `caseId`; deleted records are excluded by default. `updatePrivate()` uses `updateMany({ where: { accountId, caseId, version: expectedVersion, deletedAt: null } })` and throws `ConcurrencyConflict` when the affected row count is zero. Message append, consent change, and deletion share a parent-row `FOR UPDATE` protocol so deletion cannot commit through an in-flight child write. Consent changes update `CaseRecord.consent`, increment the case version, append the immutable consent event and case revision, and audit the action atomically. Recovery session issuance locks and rechecks the current throttle row after Argon2 verification before it creates a session; unknown aliases take the dummy Argon2 path without creating unbounded throttle rows. The user-scoped message API accepts only `role=user`. Persist minimal audit events without IP, device identifiers, narrative, fact values, or source quotes.
 
 - [ ] **Step 6: Run integration tests and migrations**
 
@@ -745,7 +752,7 @@ pnpm db:test:down
 Remove-Item Env:DATABASE_URL
 ```
 
-Expected: PostgreSQL healthcheck passes; migration is created; integration suite passes; cross-account read returns `null`, stale versions raise `ConcurrencyConflict`, deleted records are absent, and the test container/volume is removed.
+Expected: PostgreSQL healthcheck passes; migration is created; integration suite passes; cross-account read returns `null`, stale versions raise `ConcurrencyConflict`, deleted records are absent, v1 remains readable after v2 is created, consent snapshots cannot diverge, child writes cannot cross a committed deletion boundary, and the test container/volume is removed.
 
 - [ ] **Step 7: Commit**
 
@@ -758,19 +765,341 @@ git commit -m "feat: persist private pseudonymous case records"
 
 - Users can create a pseudonymous account without email/phone.
 - A case is private by schema and repository enforcement, not only by UI convention.
-- Original files are not accepted by any MVP persistence endpoint.
+- Each accepted case or AI-review change appends an immutable validated revision; later updates never overwrite history.
+- Task 5 的案件基线可由 Task 5A–5C 安全扩展为原始材料托管；不得出现绕过配额、加密或扫描的直接持久化端点。
 - Delete, export, and update operations are auditable without storing IP/device identifiers.
+
+### Task 5A: Add encrypted object storage and atomic case quotas
+
+**Goal:** 在用户主动删除前长期保存原始文件与录音，同时用服务端信封加密、完整性校验和数据库配额预留强制执行单文件 100 MB、单案件 2 GB 上限。
+
+**Dependencies:** Task 5。
+
+**Files:**
+- Create: `prisma/migrations/202608310002_add_material_storage/migration.sql`
+- Modify: `prisma/schema.prisma`
+- Create: `src/domain/material.ts`
+- Create: `src/media/storage/object-store.ts`
+- Create: `src/media/storage/s3-object-store.ts`
+- Create: `src/media/storage/envelope-encryption.ts`
+- Create: `src/server/repositories/material-repository.ts`
+- Create: `src/server/services/material-upload-service.ts`
+- Create: `src/app/api/cases/[caseId]/materials/uploads/route.ts`
+- Create: `src/app/api/cases/[caseId]/materials/uploads/[uploadId]/complete/route.ts`
+- Create: `tests/integration/material-storage.test.ts`
+
+**Interfaces:**
+
+```ts
+export const MAX_MATERIAL_BYTES = 100 * 1024 * 1024;
+export const MAX_CASE_MATERIAL_BYTES = 2 * 1024 * 1024 * 1024;
+
+export interface MaterialUploadReservation {
+  uploadId: string;
+  caseId: string;
+  materialId: string;
+  reservedBytes: number;
+  expiresAt: string;
+  uploadTarget: MultipartUploadTarget;
+}
+
+export interface MaterialObjectStore {
+  beginEncryptedUpload(input: BeginObjectUpload): Promise<MultipartUploadTarget>;
+  completeEncryptedUpload(input: CompleteObjectUpload): Promise<{ objectKey: string; sha256: string; storedBytes: number }>;
+  abortUpload(uploadId: string): Promise<void>;
+  deleteObject(objectKey: string): Promise<void>;
+}
+```
+
+- [ ] **Step 1: Write failing quota, ownership, encryption, and immutability tests**
+
+```ts
+it("atomically rejects reservations that would exceed the case quota", async () => {
+  await reserveUpload({ accountId: "acct-a", caseId: "case-a", byteLength: MAX_CASE_MATERIAL_BYTES - 1 });
+  await expect(reserveUpload({ accountId: "acct-a", caseId: "case-a", byteLength: 2 }))
+    .rejects.toThrow("CASE_STORAGE_LIMIT_EXCEEDED");
+});
+
+it("never persists an unencrypted material object", async () => {
+  const result = await completeUpload(validCompletedUpload);
+  expect(result.encryption).toMatchObject({ scheme: "AES-256-GCM", keyVersion: expect.any(String) });
+  expect(fakeObjectStore.putPlaintextCalls).toBe(0);
+});
+```
+
+另外覆盖：`100 MB + 1 byte` 原子拒绝、20 个并发预留只有配额内请求成功、跨账户完成/中止返回同一 404、上传字节数与声明不符时释放预留、原件 metadata 与 object key 不可 PATCH 覆盖。
+
+- [ ] **Step 2: Run focused tests before implementation**
+
+Run:
+
+```powershell
+pnpm db:test:up
+$env:DATABASE_URL = "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public"
+pnpm test:integration -- tests/integration/material-storage.test.ts
+pnpm db:test:down
+Remove-Item Env:DATABASE_URL
+```
+
+Expected: FAIL because material schema, object-store adapter, quota reservation, and routes do not exist.
+
+- [ ] **Step 3: Implement the material metadata model and atomic quota reservation**
+
+Add `CaseStorageUsage`, `Material`, `MaterialUploadReservation`, and `MaterialObjectVersion`. `Material` belongs to both `caseId` and the owning account through the case relation; the repository always checks both. In one PostgreSQL transaction, lock/upsert the case usage row, reject negative/unknown lengths, reject `byteLength > 100 MB`, reject `usedBytes + reservedBytes + byteLength > 2 GB`, and increment `reservedBytes`. Completion moves exactly the verified stored byte count from reserved to used; abort/expiry releases it idempotently. Never rely on a UI counter or S3-reported quota alone.
+
+Materials default to no expiry (`expiresAt = null`) and remain until user deletion. Original object versions are append-only: replacement creates a new `MaterialObjectVersion`; no update mutates an existing object key, hash, size, encryption metadata, or upload timestamp.
+
+- [ ] **Step 4: Implement envelope-encrypted multipart storage**
+
+Use an S3-compatible private bucket with public access blocked, TLS-only policy, versioning, and no default lifecycle expiration. Generate a unique data-encryption key per object, encrypt with AES-256-GCM, wrap it with the configured KMS/KEK version, and persist only wrapped-key metadata and authentication tag. Object keys use random IDs and never contain case IDs, account aliases, filenames, employers, or user text. Completion streams SHA-256 verification, validates actual bytes against the reservation, and finalizes metadata only after the encrypted object is durable; failure aborts the multipart upload and releases the reservation through an idempotent cleanup job.
+
+- [ ] **Step 5: Run tests, migration, and storage contract checks**
+
+Run:
+
+```powershell
+pnpm db:test:up
+$env:DATABASE_URL = "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public"
+$env:OBJECT_STORE_ENDPOINT = "http://127.0.0.1:59000"
+pnpm exec prisma migrate deploy
+pnpm test:integration -- tests/integration/material-storage.test.ts
+pnpm typecheck
+pnpm db:test:down
+Remove-Item Env:DATABASE_URL, Env:OBJECT_STORE_ENDPOINT
+```
+
+Expected: PASS; concurrent reservations never exceed 2 GB, oversized files are rejected before upload, all durable objects expose encryption/key-version and SHA-256 metadata, and failed uploads release reserved bytes exactly once.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add prisma src/domain/material.ts src/media/storage src/server/repositories/material-repository.ts src/server/services/material-upload-service.ts src/app/api/cases tests/integration/material-storage.test.ts
+git commit -m "feat: add encrypted case material storage"
+```
+
+**Acceptance Criteria:**
+
+- The backend atomically enforces 100 MB per file and 2 GB per case under concurrent requests.
+- Every persisted object is private, envelope-encrypted, integrity-hashed, and owned through the case/account boundary.
+- Original object versions are immutable and have no default expiration; only user deletion starts cleanup.
+- Interrupted, expired, and size-mismatched uploads cannot leak quota or create readable partial materials.
+
+### Task 5B: Add quarantine scanning, type detection, and safe parsing states
+
+**Goal:** 允许几乎所有格式被安全保存，同时把材料读取资格与保存成功分开：未通过检测和恶意扫描的内容永远不得进入解析器或 AI。
+
+**Dependencies:** Task 5A。
+
+**Files:**
+- Create: `prisma/migrations/202608310003_add_material_processing/migration.sql`
+- Modify: `prisma/schema.prisma`
+- Modify: `src/domain/material.ts`
+- Create: `src/media/security/file-signature.ts`
+- Create: `src/media/security/malware-scanner.ts`
+- Create: `src/media/security/quarantine-service.ts`
+- Create: `src/media/parsers/parser-registry.ts`
+- Create: `src/media/parsers/safe-extraction-worker.ts`
+- Create: `src/server/services/material-processing-service.ts`
+- Create: `src/app/api/cases/[caseId]/materials/[materialId]/route.ts`
+- Create: `tests/integration/material-processing.test.ts`
+- Create: `tests/fixtures/materials/README.md`
+
+**Interfaces:**
+
+```ts
+export type MaterialProcessingState =
+  | "uploading"
+  | "quarantined"
+  | "scanning"
+  | "saved_unread"
+  | "parse_queued"
+  | "parsed"
+  | "blocked_malicious"
+  | "scan_failed";
+
+export interface MaterialReadiness {
+  materialId: string;
+  declaredMime: string | null;
+  detectedMime: string | null;
+  signatureStatus: "match" | "mismatch" | "unknown";
+  processingState: MaterialProcessingState;
+  eligibleForAi: boolean;
+}
+```
+
+- [ ] **Step 1: Write failing adversarial processing tests**
+
+```ts
+it("saves an unsupported format but keeps it unread and out of AI", async () => {
+  const material = await processFixture("sample.unknown");
+  expect(material.processingState).toBe("saved_unread");
+  expect(material.eligibleForAi).toBe(false);
+});
+
+it("never parses a signature-mismatched executable", async () => {
+  const material = await processFixture("invoice.pdf.exe-as-pdf");
+  expect(material.processingState).toBe("quarantined");
+  expect(fakeParser.calls).toHaveLength(0);
+});
+```
+
+覆盖 MIME 伪造、polyglot、ZIP/RAR/7z、邮件包、密码压缩包、DOCM/XLSM、EXE/DLL、脚本、超大解压比、嵌套归档、恶意扫描超时、解析器崩溃和重试幂等性。测试夹具必须是无害合成样本，不提交真实恶意代码或用户材料。
+
+- [ ] **Step 2: Run processing tests before implementation**
+
+Run: `pnpm test:integration -- tests/integration/material-processing.test.ts`
+
+Expected: FAIL because signature detection, scanner adapter, quarantine state machine, and parser registry are missing.
+
+- [ ] **Step 3: Implement detection and quarantine state transitions**
+
+Keep every completed upload in the private encrypted quarantine namespace first. Compare declared MIME, extension, magic bytes, container structure, and scanner verdict; record mismatches without trusting the browser header. Scans run in an isolated worker with no outbound network and read-only input. EXE/DLL/scripts/macros, encrypted archives, scanner errors/timeouts, suspicious polyglots, excessive decompression ratios, and nested archives remain quarantined or blocked; they are never executed or directly parsed. State transitions use optimistic versioning and an allowlisted transition table so retries cannot change `blocked_malicious` back to readable.
+
+- [ ] **Step 4: Implement capability-based parsing and “saved, not yet read” behavior**
+
+Parser adapters declare exact signatures/MIME families, size/resource limits, sandbox profile, and output schema. Supported clean files move to `parse_queued` and then `parsed`; unsupported but non-malicious files move to `saved_unread` and display “已保存、尚未读取”. Parser failure does not delete the original and does not silently mark it read. Only `parsed` derivatives with their own hash, parser version, source material version, and source spans can be returned by `listAiEligibleContentRefs()`; all other states return no AI content reference.
+
+- [ ] **Step 5: Run tests and parser isolation checks**
+
+Run:
+
+```powershell
+pnpm test:integration -- tests/integration/material-processing.test.ts
+pnpm test -- tests/unit/material-processing.test.ts
+pnpm typecheck
+```
+
+Expected: PASS; each fixture reaches the documented state, no quarantined/blocked/unread material reaches a parser or AI content-ref list, and every parser has CPU/memory/decompression/time limits.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add prisma src/domain/material.ts src/media/security src/media/parsers src/server/services/material-processing-service.ts src/app/api/cases tests/integration/material-processing.test.ts tests/fixtures/materials
+git commit -m "feat: quarantine and safely process case materials"
+```
+
+**Acceptance Criteria:**
+
+- Nearly all formats can be retained without claiming all formats can be understood.
+- MIME/signature mismatch and dangerous containers cannot bypass quarantine by filename or request headers.
+- Unsupported clean files remain encrypted and show `saved_unread`; they never influence AI output.
+- Only scanned, safely parsed, provenance-linked derivatives are eligible for AI input.
+
+### Task 5C: Add immutable transcripts and both voice modes
+
+**Goal:** 同时交付“语音输入+AI 文字回复”和“实时语音对话”两种模式，并保证音频原件、机器转写、用户修订文本和字幕事件各自版本化、不可覆盖且可追溯。
+
+**Dependencies:** Tasks 4, 5A, and 5B。
+
+**Files:**
+- Create: `prisma/migrations/202608310004_add_transcript_versions/migration.sql`
+- Modify: `prisma/schema.prisma`
+- Modify: `src/domain/material.ts`
+- Create: `src/domain/voice-session.ts`
+- Create: `src/media/transcription/transcriber.ts`
+- Create: `src/media/transcription/transcript-service.ts`
+- Create: `src/media/realtime/realtime-voice-gateway.ts`
+- Create: `src/server/services/voice-input-service.ts`
+- Create: `src/app/api/cases/[caseId]/voice-input/route.ts`
+- Create: `src/app/api/cases/[caseId]/voice-sessions/route.ts`
+- Create: `src/app/api/cases/[caseId]/voice-sessions/[sessionId]/events/route.ts`
+- Create: `tests/integration/voice-modes.test.ts`
+
+**Interfaces:**
+
+```ts
+export interface TranscriptVersion {
+  transcriptVersionId: string;
+  sourceAudioVersionId: string;
+  parentTranscriptVersionId: string | null;
+  kind: "machine_transcript" | "user_revision" | "realtime_caption";
+  text: string;
+  locale: string;
+  segments: Array<{ startMs: number; endMs: number; text: string }>;
+  createdAt: string;
+}
+
+export interface RealtimeVoiceGateway {
+  start(session: VoiceSessionConfig): Promise<VoiceSessionHandle>;
+  appendAudio(sessionId: string, chunk: Uint8Array): Promise<void>;
+  interrupt(sessionId: string): Promise<void>;
+  end(sessionId: string): Promise<void>;
+}
+```
+
+- [ ] **Step 1: Write failing versioning and voice-state tests**
+
+```ts
+it("creates a user revision without overwriting the machine transcript", async () => {
+  const machine = await transcriptService.createMachineTranscript(audioVersion, segments);
+  const revision = await transcriptService.revise(machine.transcriptVersionId, "用户修订内容");
+  expect(revision.parentTranscriptVersionId).toBe(machine.transcriptVersionId);
+  await expect(transcriptRepository.get(machine.transcriptVersionId)).resolves.toEqual(machine);
+});
+
+it("interrupts realtime output while preserving synchronized captions", async () => {
+  await voiceGateway.interrupt("voice-a");
+  expect(await eventRepository.list("voice-a")).toContainEqual(expect.objectContaining({ type: "assistant_interrupted" }));
+});
+```
+
+覆盖录音取消/重录、发送前编辑、转写失败保留原音频、实时静音/打断/切文字/断线恢复、字幕顺序、跨账户 voice session 拒绝、未经扫描的音频不转写、字幕未确认前不写入正式案件字段。
+
+- [ ] **Step 2: Run voice tests before implementation**
+
+Run: `pnpm test:integration -- tests/integration/voice-modes.test.ts`
+
+Expected: FAIL because transcript versioning, transcription adapter, realtime gateway, and voice routes are missing.
+
+- [ ] **Step 3: Implement voice input plus text response**
+
+Treat recorded audio as a Task 5A material: enforce the same quotas, encrypt immediately, scan it through Task 5B, and only then transcribe. Preserve the original audio object even when transcription fails. The machine transcript is a new immutable version; “发送前编辑” creates a child `user_revision`, while cancel/re-record creates a new audio material version and leaves the cancelled version inaccessible to AI pending deletion cleanup. Only the user-confirmed transcript version becomes an `AiInputEnvelope.contentRef`.
+
+- [ ] **Step 4: Implement realtime voice with synchronized captions and interruption**
+
+Route realtime media through a provider-neutral gateway configured outside the domain layer. Support bidirectional audio, ordered caption events, barge-in/interrupt, mute, explicit end, and switch-to-text without losing the conversation. Persist encrypted source audio only when the user has accepted the recording notice; regardless, persist consent-safe caption/review events needed for the case. Reconnect uses monotonic event sequence numbers and never duplicates a transcript version. Local crisis precheck and PII policy still run before any confirmed transcript enters model orchestration.
+
+- [ ] **Step 5: Run contract, failure, and recovery tests**
+
+Run:
+
+```powershell
+pnpm test:integration -- tests/integration/voice-modes.test.ts
+pnpm test -- tests/unit/transcript-service.test.ts
+pnpm typecheck
+```
+
+Expected: PASS; both modes work with deterministic fake transcription/realtime providers, interruptions are observable, reconnect is idempotent, and original audio/transcript/revision rows remain distinct and traceable.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add prisma src/domain/material.ts src/domain/voice-session.ts src/media/transcription src/media/realtime src/server/services/voice-input-service.ts src/app/api/cases tests/integration/voice-modes.test.ts
+git commit -m "feat: add versioned voice intake modes"
+```
+
+**Acceptance Criteria:**
+
+- Users can record, cancel, re-record, edit a transcript before sending, and receive an AI text response.
+- Users can hold a realtime voice conversation with synchronized captions, interruption, mute, reconnect, and text-mode switching.
+- Audio originals, machine transcripts, user revisions, and realtime caption versions never overwrite each other.
+- Unscanned audio and unconfirmed transcript text never enter AI assessment.
 
 ### Task 6: Build the AI conversation UI and user review workspace
 
-**Goal:** 用对话替代表单，并让用户在保存前审阅、修改和确认结构化档案。
+**Goal:** 用 ChatGPT 类对话替代表单，并让用户在同一工作台安全上传材料、使用两种语音入口、查看处理状态，以及审阅、修改和确认结构化档案。
 
-**Dependencies:** Tasks 4–5。
+**Dependencies:** Tasks 4–5C。
 
 **Files:**
 - Create: `src/app/(public)/start/page.tsx`
 - Create: `src/app/(private)/cases/[caseId]/page.tsx`
 - Create: `src/components/chat/conversation.tsx`
+- Create: `src/components/chat/composer.tsx`
+- Create: `src/components/chat/material-upload.tsx`
+- Create: `src/components/chat/voice-input.tsx`
+- Create: `src/components/chat/realtime-voice.tsx`
+- Create: `src/components/chat/processing-status.tsx`
 - Create: `src/components/case-review/case-review.tsx`
 - Create: `src/components/case-review/indicator-matrix.tsx`
 - Create: `src/components/case-review/evidence-coverage.tsx`
@@ -780,6 +1109,7 @@ git commit -m "feat: persist private pseudonymous case records"
 - Create: `src/app/api/cases/route.ts`
 - Create: `src/app/api/cases/[caseId]/route.ts`
 - Create: `tests/e2e/conversation-review.spec.ts`
+- Create: `tests/e2e/material-and-voice-intake.spec.ts`
 - Create: `tests/e2e/accessibility.spec.ts`
 
 **Interfaces:**
@@ -787,7 +1117,7 @@ git commit -m "feat: persist private pseudonymous case records"
 ```ts
 export type CreateAccountResponse = { alias: string; recoverySecret: string };
 
-export type ConversationRequest = { sessionId: string; message: string };
+export type ConversationRequest = { sessionId: string; message: string; contentRefs?: string[] };
 export type ConversationResponse = { assistant: AssistantTurn; caseDraft?: CaseDraft };
 
 export type PatchCaseRequest = { patch: CasePatch; expectedVersion: number };
@@ -815,16 +1145,25 @@ test("user can converse, review indicators, and save privately", async ({ page }
   await page.getByRole("button", { name: "保存为私密档案" }).click();
   await expect(page.getByText("仅本人可见")).toBeVisible();
 });
+
+test("unscanned uploads are visible but cannot be sent to AI", async ({ page }) => {
+  await page.goto("/cases/case-a");
+  await page.getByLabel("添加材料").setInputFiles("tests/fixtures/materials/sample.pdf");
+  await expect(page.getByText("正在安全扫描")).toBeVisible();
+  await expect(page.getByRole("button", { name: "发送" })).toBeDisabled();
+});
 ```
 
 - [ ] **Step 2: Run the E2E test before UI implementation**
 
-Run: `pnpm test:e2e tests/e2e/conversation-review.spec.ts`
+Run: `pnpm test:e2e tests/e2e/conversation-review.spec.ts tests/e2e/material-and-voice-intake.spec.ts`
 Expected: FAIL because routes and components are missing.
 
 - [ ] **Step 3: Implement the conversation page**
 
-Build the start page as a server component containing a client `Conversation` island. The first model call may run with an ephemeral server-side session and must not persist the message. Only when the user chooses “保存为私密档案” does the UI call `POST /api/accounts`, show the one-time recovery secret in a copy/download panel, require acknowledgement, then call `POST /api/cases` with the user-confirmed draft; if the user leaves before saving, no case/account/conversation row remains. The page shows platform identity, privacy limitations, crisis exit, pause/skip controls, request status, retry, and a message composer with a 10,000-character limit. It must not render a file input or accept drag/drop uploads. Every substantive assessment response renders the fixed `ai-assessment`, `legal-reference`, and `user-decision` disclaimers.
+Build the start page as a server component containing a client `Conversation` island. The first text-only model call may run with an ephemeral server-side session and must not persist the message. Before any material or audio upload, create/restore the pseudonymous account and private draft because quota, encryption, ownership, deletion, and audit controls require a case boundary. Show the one-time recovery secret in a copy/download panel and require acknowledgement. The page shows platform identity, privacy limitations, crisis exit, pause/skip controls, streaming status, stop/retry/regenerate, edit-and-resend, a 10,000-character composer, drag/drop and file picker, upload progress, scan/parse/quarantine state, and both voice modes. Every substantive assessment response renders the fixed `ai-assessment`, `legal-reference`, and `user-decision` disclaimers.
+
+The composer may attach only server-issued `contentRefs` from Task 5B/5C. `quarantined`, `scanning`, `scan_failed`, `blocked_malicious`, and `saved_unread` materials remain visible in the case but are disabled for AI use with plain-language status. Do not send local filesystem paths, raw bytes, object keys, unconfirmed transcripts, or browser-declared MIME values to the AI route. Upload/voice errors must not erase typed text or previously completed uploads.
 
 - [ ] **Step 4: Implement review components**
 
@@ -844,7 +1183,7 @@ $env:DATABASE_URL = "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?sc
 $env:AI_PROVIDER = "mock"
 $env:SESSION_SECRET = "0123456789abcdef0123456789abcdef"
 pnpm exec prisma migrate deploy
-pnpm test:e2e tests/e2e/conversation-review.spec.ts
+pnpm test:e2e tests/e2e/conversation-review.spec.ts tests/e2e/material-and-voice-intake.spec.ts
 pnpm axe:e2e
 pnpm db:test:down
 Remove-Item Env:DATABASE_URL, Env:AI_PROVIDER, Env:SESSION_SECRET
@@ -862,15 +1201,150 @@ git commit -m "feat: add AI conversation and private case review"
 **Acceptance Criteria:**
 
 - A user can start with natural language, see AI-extracted facts and indicators, correct them, and save a private case.
+- A user can safely upload materials, see upload/scan/parse/quarantine states, and use either voice mode from the same ChatGPT-like composer.
+- Materials and transcript versions are offered to AI only after server-side scanning/parsing and explicit user confirmation.
 - All indicators and evidence gaps are visible; no score or legal conclusion is shown.
 - Crisis mode stops normal questions and provides a safe exit.
 - UI never claims a report was sent to an authority.
+
+### Task 6A: Add administrator RBAC, independent review labels, and user-visible access history
+
+**Goal:** 提供默认低频但可随时使用的管理员审核工作台；管理员无需填写查看理由即可复核案件和材料，但不能绕过 RBAC，且所有敏感操作自动审计并向用户展示访问记录。
+
+**Dependencies:** Tasks 5C and 6。
+
+**Files:**
+- Create: `prisma/migrations/202608310005_add_admin_review/migration.sql`
+- Modify: `prisma/schema.prisma`
+- Create: `src/domain/admin-review.ts`
+- Create: `src/server/admin/rbac.ts`
+- Create: `src/server/admin/admin-case-service.ts`
+- Create: `src/server/repositories/admin-review-repository.ts`
+- Modify: `src/server/audit.ts`
+- Create: `src/app/(admin)/admin/cases/page.tsx`
+- Create: `src/app/(admin)/admin/cases/[caseId]/page.tsx`
+- Create: `src/app/api/admin/cases/route.ts`
+- Create: `src/app/api/admin/cases/[caseId]/route.ts`
+- Create: `src/app/api/admin/cases/[caseId]/materials/[materialId]/download/route.ts`
+- Create: `src/app/api/admin/cases/[caseId]/reviews/route.ts`
+- Create: `src/app/api/cases/[caseId]/access-history/route.ts`
+- Create: `src/components/admin/admin-case-review.tsx`
+- Create: `src/components/case-review/access-history.tsx`
+- Create: `tests/integration/admin-review.test.ts`
+- Create: `tests/e2e/admin-review.spec.ts`
+
+**Interfaces:**
+
+```ts
+export type AdminRole = "case_reviewer" | "case_supervisor";
+export type AdminReviewStatus =
+  | "intake_rejected"
+  | "evidence_incomplete"
+  | "credibility_concern"
+  | "demonstrably_false";
+
+export interface AdminReviewVersion {
+  adminReviewVersionId: string;
+  caseId: string;
+  reviewerId: string;
+  status: AdminReviewStatus;
+  rationale: string | null;
+  sourceRefs: string[];
+  supersedesId: string | null;
+  secondReviewerId: string | null;
+  createdAt: string;
+}
+
+export type AdminAuditAction =
+  | "admin_case_view"
+  | "admin_material_play"
+  | "admin_material_download"
+  | "admin_review_create"
+  | "admin_review_update"
+  | "admin_case_modify"
+  | "admin_case_delete";
+```
+
+- [ ] **Step 1: Write failing authorization, review-separation, and audit tests**
+
+```ts
+it("allows an authorized reviewer to view without a reason and records the access", async () => {
+  await adminCaseService.getCase({ adminId: "reviewer-a", caseId: "case-a" });
+  expect(await auditRepository.findForCase("case-a")).toContainEqual(
+    expect.objectContaining({ action: "admin_case_view", actorId: "reviewer-a" }),
+  );
+});
+
+it("requires two distinct reviewers for demonstrably_false", async () => {
+  await expect(createAdminReview({ status: "demonstrably_false", reviewerId: "reviewer-a", secondReviewerId: "reviewer-a" }))
+    .rejects.toThrow("SECOND_REVIEWER_REQUIRED");
+});
+```
+
+覆盖未登录/普通用户/错误角色拒绝、直接猜测 material ID 不可下载、列表与详情均受 RBAC、播放/下载/标注/修改/删除自动审计、管理员意见不覆盖用户陈述或 AI ReviewVersion、四类状态枚举、`demonstrably_false` 反证来源和二次复核、用户只能查看自己案件的访问历史。
+
+- [ ] **Step 2: Run admin tests before implementation**
+
+Run:
+
+```powershell
+pnpm db:test:up
+$env:DATABASE_URL = "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public"
+pnpm test:integration -- tests/integration/admin-review.test.ts
+pnpm db:test:down
+Remove-Item Env:DATABASE_URL
+```
+
+Expected: FAIL because admin identity, RBAC, review versions, admin routes, and audit actions do not exist.
+
+- [ ] **Step 3: Implement server-enforced RBAC and unrestricted-in-time review access**
+
+Authenticate administrators separately from pseudonymous users, store only stable internal actor IDs in audits, and authorize every list/detail/play/download/review/modify/delete request in the service layer. `case_reviewer` may list, view, play/download and create ordinary review versions; `case_supervisor` is additionally required for destructive changes and second review. Access is available at any time and no reason prompt is required, but there is no anonymous/shared admin credential, URL-only authorization, bypass endpoint, or public object-store URL. Default-low-frequency is an operational expectation, not a weaker permission or audit rule.
+
+- [ ] **Step 4: Implement independent review versions and user recourse**
+
+Persist admin review versions separately from `CaseRecord`, user statements, material versions, transcripts, and AI review versions. `intake_rejected` covers duplicate/spam/test/out-of-scope/user-withdrawn intake; `evidence_incomplete` never means false; `credibility_concern` requires a documented inconsistency/source reference; `demonstrably_false` requires reproducible counter-evidence and a distinct supervisor's second review. New reviews supersede but never overwrite prior versions. Notify the user of review status, allow continued material submission, and expose an appeal/reconsideration link; Task 9 owns the full appeal lifecycle and deletion/retention effects.
+
+- [ ] **Step 5: Implement automatic audit and user-visible access history**
+
+Write an audit event before returning sensitive case content or issuing a short-lived material playback/download grant. Record actor ID, case/material ID, action, UTC timestamp, outcome, and request correlation hash—never the material contents, narrative, IP/device identifier, or credentials. Viewing requires no reason field. Expose a paginated owner-only access-history endpoint and UI listing access/play/download/label/modify/delete time and action in plain language. Audit write failure is fail-closed for reads/downloads/changes, except a documented emergency static-resource path that never accesses a case.
+
+- [ ] **Step 6: Run integration, E2E, and policy checks**
+
+Run:
+
+```powershell
+pnpm db:test:up
+$env:DATABASE_URL = "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public"
+pnpm exec prisma migrate deploy
+pnpm test:integration -- tests/integration/admin-review.test.ts
+pnpm test:e2e tests/e2e/admin-review.spec.ts
+pnpm typecheck
+pnpm db:test:down
+Remove-Item Env:DATABASE_URL
+```
+
+Expected: PASS; unauthorized requests receive enumeration-safe 404/403 responses, every successful sensitive action has an audit event, users see only their own access history, review versions remain independent, and `demonstrably_false` cannot be created by one reviewer.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add prisma src/domain/admin-review.ts src/server/admin src/server/repositories/admin-review-repository.ts src/server/audit.ts src/app/\(admin\) src/app/api/admin src/app/api/cases src/components/admin src/components/case-review/access-history.tsx tests/integration/admin-review.test.ts tests/e2e/admin-review.spec.ts
+git commit -m "feat: add audited administrator case review"
+```
+
+**Acceptance Criteria:**
+
+- Authorized administrators can review cases and original materials at any time without selecting or entering a view reason.
+- RBAC is enforced server-side for list, view, play, download, label, modify, and delete operations.
+- Admin review labels use exactly the four approved statuses, remain independent, retain history, and support notification, supplementation, and appeal.
+- Every sensitive admin action is automatically audited; users can inspect access history for their own cases.
 
 ### Task 7: Implement qualitative evidence coverage and legal/channel navigation
 
 **Goal:** 将“证据是否覆盖常见提交要素”和“可能相关法律/渠道”实现为可追溯定性输出。
 
-**Dependencies:** Tasks 2–4 and 6.
+**Dependencies:** Tasks 2–4, 5B, 5C, and 6A.
 
 **Files:**
 - Create: `src/domain/evidence-coverage.ts`
@@ -947,7 +1421,7 @@ git commit -m "feat: add qualitative evidence and legal navigation"
 
 **Goal:** 让用户将私密档案转换为通用材料，并为未来 CBP/BAFA 等适配器保留稳定接口。
 
-**Dependencies:** Tasks 2, 5, and 7.
+**Dependencies:** Tasks 2, 5A–5C, 6A, and 7.
 
 **Files:**
 - Create: `src/connectors/connector.ts`
@@ -1067,13 +1541,16 @@ git commit -m "feat: add user-controlled case export connectors"
 
 **Goal:** 把安全承诺落实为默认设置、数据生命周期和可演练的故障行为。
 
-**Dependencies:** Tasks 4–8。
+**Dependencies:** Tasks 4–8, 5A–5C, and 6A。
 
 **Files:**
 - Create: `src/server/redaction.ts`
 - Create: `src/server/audit.ts`
 - Create: `src/server/retention.ts`
+- Create: `src/server/key-rotation.ts`
+- Create: `src/server/repositories/appeal-repository.ts`
 - Create: `src/app/api/cases/[caseId]/delete/route.ts`
+- Create: `src/app/api/cases/[caseId]/appeals/route.ts`
 - Create: `tests/integration/privacy-controls.test.ts`
 - Modify: `docs/risk-register.md`
 - Modify: `docs/release-gates.md`
@@ -1097,27 +1574,69 @@ export interface DeletionReceipt {
   receiptId: string;
   caseId: string;
   deletedAt: string;
-  targets: Array<"primary_record" | "conversation_messages" | "search_index" | "cache" | "backup_queue">;
+  targets: Array<
+    | "primary_record"
+    | "conversation_messages"
+    | "material_metadata"
+    | "object_store"
+    | "transcript_versions"
+    | "wrapped_keys"
+    | "search_index"
+    | "cache"
+    | "backup_queue"
+  >;
   externalSystems: "not_applicable";
+}
+
+export interface AppealRecord {
+  appealId: string;
+  caseId: string;
+  accountId: string;
+  adminReviewVersionId: string;
+  statement: string;
+  supportingMaterialIds: string[];
+  status: "submitted" | "under_review" | "resolved";
+  createdAt: string;
 }
 
 export interface AuditEvent {
   eventId: string;
   accountId: string;
   caseId?: string;
-  action: "create" | "update" | "export_preview" | "export" | "delete" | "consent_change" | "model_fallback";
+  actorId?: string;
+  materialId?: string;
+  action:
+    | "create"
+    | "update"
+    | "export_preview"
+    | "export"
+    | "delete"
+    | "consent_change"
+    | "model_fallback"
+    | "material_view"
+    | "material_play"
+    | "material_download"
+    | "admin_case_view"
+    | "admin_material_play"
+    | "admin_material_download"
+    | "admin_review_create"
+    | "admin_review_update"
+    | "admin_case_modify"
+    | "admin_case_delete";
   occurredAt: string;
-  metadata: { connectorId?: string; fieldCount?: number; reasonCode?: string };
+  outcome?: "allowed" | "denied" | "failed";
+  metadata: { connectorId?: string; fieldCount?: number; reasonCode?: string; reviewStatus?: string };
 }
 ```
 
 - [ ] **Step 1: Write privacy control tests**
 
 ```ts
-it("quarantines dangerous uploads before parsing", async () => {
-  const response = await request.post("/api/cases/case-a/materials").send({ filename: "macro.docm", bytes: "..." });
-  expect(response.status).toBe(202);
-  expect(response.body.processingState).toBe("quarantined");
+it("deletion queues encrypted objects, transcripts, wrapped keys, and backups", async () => {
+  const receipt = await deleteCase("acct-a", "case-a");
+  expect(receipt.targets).toEqual(expect.arrayContaining([
+    "object_store", "transcript_versions", "wrapped_keys", "backup_queue",
+  ]));
 });
 
 it("deletion receipt lists primary and queued cleanup targets", async () => {
@@ -1137,11 +1656,15 @@ Detect likely phone, email, identity-document, and precise-address patterns with
 
 - [ ] **Step 4: Implement deletion and retention jobs**
 
-`deleteCase()` runs a transaction that marks the case deleted, removes conversation messages, and appends idempotent `CleanupJob` rows for `search_index`, `cache`, and `backup_queue`; it returns a signed `DeletionReceipt`. All repository reads exclude deleted records and cleanup workers are safe to retry. The receipt explicitly says external systems are not applicable until a connector has separately shared data; never claim deletion from systems outside platform control.
+`deleteCase()` runs a transaction that marks the case deleted, revokes active upload/playback/download grants, and appends idempotent `CleanupJob` rows for material metadata, encrypted object versions, transcript versions, wrapped data keys, search index, cache, and backup queue; it returns a signed `DeletionReceipt`. All user/admin repository reads exclude deleted records immediately and cleanup workers are safe to retry. Object deletion and wrapped-key destruction are separately verified; backup tombstones prevent deleted data from being restored into active storage. The receipt explicitly says external systems are not applicable until a connector has separately shared data; never claim deletion from systems outside platform control.
+
+Implement KEK/KMS key-version rotation as a resumable re-wrap job: decrypt data keys only inside the key service, write the new wrapped-key version, verify a sample decrypt/hash, then retire the old version after a documented rollback window. Rotation never rewrites plaintext objects and failures retain the last readable wrapped-key version. Add quarterly restore-and-delete drills covering primary DB, object store, replicas, caches, search indexes, and backups.
 
 - [ ] **Step 5: Implement audit and degraded-mode logging**
 
-Audit create/update/export-preview/export/delete, consent changes, and model fallback with the `AuditEvent` shape, without IP/device identifiers, credentials, raw narrative, source quotes, or full field values. Hash request IDs with a per-deployment salt only for correlation. When AI or knowledge retrieval fails, expose `degraded: true`, a machine-readable `reasonCode`, and static crisis/legal resources; never present partial model output as saved or submitted.
+Audit user and administrator create/update/export-preview/export/delete, consent changes, material view/play/download, admin labels, admin modifications, and model fallback with the `AuditEvent` shape, without IP/device identifiers, credentials, raw narrative, source quotes, or full field values. Hash request IDs with a per-deployment salt only for correlation. When AI or knowledge retrieval fails, expose `degraded: true`, a machine-readable `reasonCode`, and static crisis/legal resources; never present partial model output as saved or submitted. Audit failure is fail-closed for sensitive material/admin operations.
+
+The owner-only appeal endpoint binds an appeal to an existing `AdminReviewVersion`, accepts a user statement and already-owned supporting material IDs, and never mutates that review version. Submission creates a new audit event, notifies the review queue, and leaves the case open for further materials and AI review versions. Resolution is a new admin review/appeal event, never an overwrite.
 
 - [ ] **Step 6: Run tests and security checks**
 
@@ -1157,7 +1680,7 @@ pnpm db:test:down
 Remove-Item Env:DATABASE_URL
 ```
 
-Expected: PASS; dangerous-file request returns HTTP 202 with `quarantined`, deletion receipt names all five cleanup targets, deleted reads remain empty after retries, and `pnpm audit` reports no high-severity issue. Any exception must be recorded with owner, expiry date, and mitigation in `docs/risk-register.md` before release.
+Expected: PASS; deletion receipt names all database/object/transcript/key/cache/backup targets, deleted reads and material grants remain unavailable after retries, key re-wrap preserves verified decryptability, appeal history is append-only, and `pnpm audit` reports no high-severity issue. Any exception must be recorded with owner, expiry date, and mitigation in `docs/risk-register.md` before release.
 
 - [ ] **Step 7: Commit**
 
@@ -1168,9 +1691,11 @@ git commit -m "feat: enforce privacy and failure controls"
 
 **Acceptance Criteria:**
 
-- Raw files are encrypted before persistence; dangerous files are quarantined and never executed or parsed.
+- Raw files are encrypted before persistence; dangerous files are quarantined and never executed or parsed. Release is blocked by any unencrypted, unscanned, unauthorized, or publicly exposed raw-material path.
 - Deletion has a verifiable receipt and asynchronous cleanup path.
+- Backup cleanup, wrapped-key destruction, restore behavior, and key rotation have repeatable drills and evidence.
 - Audit records contain actions and timestamps but no raw sensitive content or device identifiers.
+- Users can appeal an admin review without overwriting the review, case, materials, or AI history.
 - AI/knowledge failures degrade safely without false status claims.
 
 ### Task 10: End-to-end quality, release gates, and operational readiness
@@ -1206,7 +1731,10 @@ Cover these exact scenarios with stable `data-testid` hooks and independent fixt
 7. No page contains a score, probability, ranking, “blacklist”, “verified company”, or “submitted to authority” claim.
 8. A gateway request is blocked when `ModelInputPolicy` returns `confirmation_required`.
 9. A static-mode deployment neither calls the model nor writes a case.
-10. Golden cases cover simplified Chinese, English, one additional pilot locale, mixed-language input, information-insufficient input, and prompt-injection attempts; unsupported locales disclose the fallback language instead of silently mistranslating.
+10. A material upload enforces 100 MB/2 GB atomic quotas; unsupported clean files remain `saved_unread`; quarantined/blocked material never reaches AI.
+11. Both voice modes preserve immutable audio/transcript/revision versions; interruption and reconnect are recoverable.
+12. Admin review actions require RBAC, create independent four-state versions, and are visible in owner access history.
+13. Golden cases cover simplified Chinese, English, one additional pilot locale, mixed-language input, information-insufficient input, and prompt-injection attempts; unsupported locales disclose the fallback language instead of silently mistranslating.
 
 - [ ] **Step 2: Run the complete test suite**
 
@@ -1246,7 +1774,7 @@ Record golden-case results, source-index output, dependency audit, accessibility
 
 - [ ] **Step 5: Update project documentation**
 
-README must state the AI-Native MVP boundary and list exactly what is not shipped. Research plan must point to the implementation plan and retain “no legal advice” language. Release gates must explicitly block raw evidence storage, public pages, event clustering, and automatic submission.
+README must state the AI-Native MVP boundary and list exactly what is not shipped. Research plan must point to the implementation plan and retain “no legal advice” language. Release gates must block any unencrypted, unscanned, unauthorized, or publicly exposed raw-material path, plus public pages, event clustering, and automatic submission.
 
 - [ ] **Step 6: Commit the release evidence**
 
@@ -1260,7 +1788,7 @@ git commit -m "test: establish MVP release evidence"
 - Gate 1 passes only with all release-blocking tests and evidence present.
 - The application remains private-by-default and non-scoring.
 - The app can be disabled or degraded to static crisis/legal resources without claiming work was saved or submitted.
-- No unreviewed external connector, public report page, raw evidence store, ranking, or B2B endpoint is reachable in production configuration.
+- No unreviewed external connector, public report page, raw evidence path, ranking, or B2B endpoint is reachable in production configuration; raw-material storage is reachable only through encrypted, scanned, RBAC-protected and audited routes.
 
 ## Dependency and Milestone Summary
 
@@ -1268,10 +1796,11 @@ git commit -m "test: establish MVP release evidence"
 |-----------|-------|----------------|
 | M0 基线 | 1–2 | App runs; domain schema rejects scoring fields |
 | M1 可追溯 AI | 3–4 | Knowledge sources are traceable; crisis-first orchestration passes golden tests |
-| M2 私密档案 | 5–6 | User can converse, review, edit, save and delete a private case |
-| M3 渠道准备 | 7–8 | Qualitative coverage, legal navigation and user-confirmed export work |
-| M4 安全发布 | 9–10 | Privacy drills, E2E/accessibility tests and Gate 1 evidence complete |
+| M2 私密档案与材料 | 5–5B | User can save encrypted materials; quotas, scanning and unread states are enforced |
+| M3 语音与工作台 | 5C–6 | Both voice modes, ChatGPT-like review and safe material attachment work |
+| M4 审核与渠道 | 6A–8 | RBAC review, independent labels/appeals and user-confirmed export work |
+| M5 安全发布 | 9–10 | Privacy drills, deletion/backup/key rotation, E2E/accessibility/red-team evidence complete |
 
 ## Explicit Non-Deliverables
 
-本计划不交付：公司公开页面、地图、报告数量排名、跨用户事件聚类、自动向 CBP/BAFA/劳动监察机构提交、法律认定、营救或任何真实用户数据迁移。原始材料托管、双模式语音和管理员审核属于方案 A 首发能力，但必须通过媒体隔离、加密、删除/备份演练和审计门禁后才能启用。
+本计划不交付：公司公开页面、地图、报告数量排名、默认跨用户事件聚类、自动向 CBP/BAFA/劳动监察机构提交、法律认定、营救或任何真实用户数据迁移。方案 A 首发交付原始材料加密托管、双模式语音和管理员审核；它们只有在媒体隔离/扫描、加密、RBAC、访问审计、删除/备份演练和密钥门禁全部通过后才能启用。跨案件聚合仍是后置能力，必须逐用户明确加入并保留内部来源链。

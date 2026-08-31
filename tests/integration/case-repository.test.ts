@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { setTimeout as delay } from "node:timers/promises";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/server/db";
 import { PrismaAccountRepository } from "@/server/repositories/account-repository";
@@ -25,6 +27,66 @@ function makeDraft() {
   return { ...draft, lifecycle: "draft" as const };
 }
 
+async function installPausedChildInsertTrigger(table: "conversation_messages" | "consent_events") {
+  await prisma.$executeRawUnsafe(`
+    CREATE OR REPLACE FUNCTION manbo_test_pause_child_insert()
+    RETURNS trigger AS $$
+    BEGIN
+      PERFORM pg_advisory_xact_lock(27182, 81828);
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER manbo_test_pause_child_insert_trigger
+    BEFORE INSERT ON "${table}"
+    FOR EACH ROW EXECUTE FUNCTION manbo_test_pause_child_insert()
+  `);
+}
+
+async function beginChildInsertPause() {
+  let announceAcquired: () => void = () => undefined;
+  let releaseLock: () => void = () => undefined;
+  const acquired = new Promise<void>((resolve) => {
+    announceAcquired = resolve;
+  });
+  const release = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+  const holder = prisma.$transaction(async (transaction) => {
+    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(27182, 81828)`;
+    announceAcquired();
+    await release;
+  });
+  await acquired;
+  return { holder, release: releaseLock };
+}
+
+async function waitForPausedChildInsert(): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const [row] = await prisma.$queryRaw<Array<{ waiting: bigint }>>`
+      SELECT COUNT(*) AS "waiting"
+      FROM pg_locks
+      WHERE locktype = 'advisory' AND granted = false
+    `;
+    if (row && Number(row.waiting) > 0) {
+      return;
+    }
+    await delay(20);
+  }
+  throw new Error("Timed out waiting for the child insert concurrency barrier");
+}
+
+async function removePausedChildInsertTrigger(): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    'DROP TRIGGER IF EXISTS manbo_test_pause_child_insert_trigger ON "conversation_messages"',
+  );
+  await prisma.$executeRawUnsafe(
+    'DROP TRIGGER IF EXISTS manbo_test_pause_child_insert_trigger ON "consent_events"',
+  );
+  await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS manbo_test_pause_child_insert()" );
+}
+
 describe("private case persistence", () => {
   const accounts = new PrismaAccountRepository(prisma);
   const repository = new PrismaCaseRepository(prisma);
@@ -37,6 +99,10 @@ describe("private case persistence", () => {
     await prisma.authSession.deleteMany();
     await prisma.recoveryThrottle.deleteMany();
     await prisma.account.deleteMany();
+  });
+
+  afterEach(async () => {
+    await removePausedChildInsertTrigger();
   });
 
   it("does not allow another account to read or update a private case", async () => {
@@ -69,6 +135,35 @@ describe("private case persistence", () => {
     await expect(
       repository.updatePrivate(account.accountId, record.caseId, { jurisdiction: {} }, 1),
     ).rejects.toBeInstanceOf(ConcurrencyConflict);
+    const audits = await prisma.auditEvent.findMany({
+      where: { accountId: account.accountId, caseId: record.caseId },
+      orderBy: { occurredAt: "asc" },
+    });
+    expect(audits.map((audit) => audit.metadata)).toEqual([
+      { version: 1 },
+      { version: 2 },
+    ]);
+    expect(JSON.stringify(audits)).not.toMatch(
+      /招聘过程详情|我被要求在工厂工作|manbo-constant-time-recovery-placeholder|device|ip/i,
+    );
+  });
+
+  it("keeps immutable snapshots when a case advances to a new version", async () => {
+    const account = await accounts.createPseudonymous();
+    const original = await repository.createDraft(account.accountId, makeDraft());
+    const updated = await repository.updatePrivate(
+      account.accountId,
+      original.caseId,
+      { jurisdiction: { incidentCountry: "CN" } },
+      original.version,
+    );
+
+    await expect(
+      repository.getVersionPrivate(account.accountId, original.caseId, original.version),
+    ).resolves.toEqual(original);
+    await expect(
+      repository.getVersionPrivate(account.accountId, original.caseId, updated.version),
+    ).resolves.toEqual(updated);
   });
 
   it("soft deletion changes lifecycle, excludes reads, and records content-free audit data", async () => {
@@ -117,7 +212,7 @@ describe("private case persistence", () => {
       role: "user",
       content: "A user-controlled statement",
     });
-    await consents.record(owner.accountId, record.caseId, makeDraft().consent);
+    await consents.record(owner.accountId, record.caseId, makeDraft().consent, record.version);
 
     await expect(messages.listPrivate(owner.accountId, record.caseId)).resolves.toHaveLength(1);
     await expect(messages.listPrivate(other.accountId, record.caseId)).resolves.toEqual([]);
@@ -126,7 +221,93 @@ describe("private case persistence", () => {
       messages.append(other.accountId, record.caseId, { role: "user", content: "not owned" }),
     ).rejects.toBeInstanceOf(PrivateCaseUnavailable);
     await expect(
-      consents.record(other.accountId, record.caseId, makeDraft().consent),
+      consents.record(other.accountId, record.caseId, makeDraft().consent, record.version),
     ).rejects.toBeInstanceOf(PrivateCaseUnavailable);
+  });
+
+  it("does not let deletion commit through an in-flight message append", async () => {
+    const account = await accounts.createPseudonymous();
+    const record = await repository.createDraft(account.accountId, makeDraft());
+    await installPausedChildInsertTrigger("conversation_messages");
+    const pause = await beginChildInsertPause();
+
+    try {
+      const append = messages.append(account.accountId, record.caseId, {
+        role: "user",
+        content: "A user-controlled statement",
+      });
+      await waitForPausedChildInsert();
+      let deletionFinished = false;
+      const deletion = repository.markDeleted(account.accountId, record.caseId).then(() => {
+        deletionFinished = true;
+      });
+      await delay(200);
+      expect(deletionFinished).toBe(false);
+
+      pause.release();
+      await Promise.all([append, deletion, pause.holder]);
+    } finally {
+      pause.release();
+      await pause.holder;
+    }
+  });
+
+  it("does not let deletion commit through an in-flight consent change", async () => {
+    const account = await accounts.createPseudonymous();
+    const record = await repository.createDraft(account.accountId, makeDraft());
+    await installPausedChildInsertTrigger("consent_events");
+    const pause = await beginChildInsertPause();
+
+    try {
+      const consentChange = consents.record(
+        account.accountId,
+        record.caseId,
+        { ...record.consent, version: "v2", externalSharing: false },
+        record.version,
+      );
+      await waitForPausedChildInsert();
+      let deletionFinished = false;
+      const deletion = repository.markDeleted(account.accountId, record.caseId).then(() => {
+        deletionFinished = true;
+      });
+      await delay(200);
+      expect(deletionFinished).toBe(false);
+
+      pause.release();
+      await Promise.all([consentChange, deletion, pause.holder]);
+    } finally {
+      pause.release();
+      await pause.holder;
+    }
+  });
+
+  it("updates the case consent and appends an auditable consent event atomically", async () => {
+    const account = await accounts.createPseudonymous();
+    const record = await repository.createDraft(account.accountId, makeDraft());
+    const withdrawnConsent = {
+      ...record.consent,
+      version: "v2",
+      externalSharing: false,
+    };
+
+    await consents.record(
+      account.accountId,
+      record.caseId,
+      withdrawnConsent,
+      record.version,
+    );
+
+    await expect(repository.getPrivate(account.accountId, record.caseId)).resolves.toMatchObject({
+      consent: withdrawnConsent,
+      version: record.version + 1,
+    });
+    await expect(
+      prisma.consentEvent.findFirstOrThrow({ where: { caseId: record.caseId } }),
+    ).resolves.toMatchObject({ snapshot: withdrawnConsent });
+    await expect(
+      prisma.auditEvent.findFirstOrThrow({
+        where: { caseId: record.caseId, action: "consent_change" },
+      }),
+    ).resolves.toMatchObject({ metadata: { version: record.version + 1 } });
   });
 });

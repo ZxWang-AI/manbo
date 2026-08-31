@@ -94,7 +94,11 @@ export class PrismaAccountRepository implements AccountRepository {
       return null;
     }
 
-    if (!account || !validSecret) {
+    if (!account) {
+      return null;
+    }
+
+    if (!validSecret) {
       await this.recordRecoveryFailure(aliasHash, now);
       return null;
     }
@@ -103,24 +107,46 @@ export class PrismaAccountRepository implements AccountRepository {
     const idleExpiresAt = new Date(now.getTime() + SESSION_IDLE_MILLISECONDS);
     const absoluteExpiresAt = new Date(now.getTime() + SESSION_ABSOLUTE_MILLISECONDS);
 
-    await this.database.$transaction([
-      this.database.recoveryThrottle.deleteMany({ where: { aliasHash } }),
-      this.database.authSession.create({
-        data: {
-          sessionIdHash: hashOpaqueToken(sessionId),
-          accountId: account.accountId,
-          lastSeenAt: now,
-          idleExpiresAt,
-          absoluteExpiresAt,
-        },
-      }),
-    ]);
+    return this.database.$transaction(
+      async (transaction) => {
+        await transaction.$executeRaw(Prisma.sql`
+          INSERT INTO "recovery_throttles"
+            ("alias_hash", "failed_count", "window_started_at", "blocked_until", "updated_at")
+          VALUES (${aliasHash}, 0, ${now}, NULL, ${now})
+          ON CONFLICT ("alias_hash") DO NOTHING
+        `);
+        const [lockedThrottle] = await transaction.$queryRaw<
+          Array<{ blockedUntil: Date | null }>
+        >(Prisma.sql`
+          SELECT "blocked_until" AS "blockedUntil"
+          FROM "recovery_throttles"
+          WHERE "alias_hash" = ${aliasHash}
+          FOR UPDATE
+        `);
 
-    return {
-      accountId: account.accountId,
-      sessionId,
-      expiresAt: idleExpiresAt.toISOString(),
-    };
+        if (lockedThrottle?.blockedUntil && lockedThrottle.blockedUntil > now) {
+          return null;
+        }
+
+        await transaction.authSession.create({
+          data: {
+            sessionIdHash: hashOpaqueToken(sessionId),
+            accountId: account.accountId,
+            lastSeenAt: now,
+            idleExpiresAt,
+            absoluteExpiresAt,
+          },
+        });
+        await transaction.recoveryThrottle.deleteMany({ where: { aliasHash } });
+
+        return {
+          accountId: account.accountId,
+          sessionId,
+          expiresAt: idleExpiresAt.toISOString(),
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   async resumeSession(sessionId: string): Promise<AuthSession | null> {

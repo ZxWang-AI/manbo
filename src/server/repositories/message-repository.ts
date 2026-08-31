@@ -3,8 +3,10 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type MessageRole, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
+import { lockPrivateCase } from "./private-case-lock";
+
 const messageSchema = z.strictObject({
-  role: z.enum(["user", "assistant", "system"]),
+  role: z.literal("user"),
   content: z.string().min(1),
 });
 
@@ -27,11 +29,7 @@ export class PrismaMessageRepository {
     const message = messageSchema.parse(input);
     return this.database.$transaction(
       async (transaction) => {
-        const ownedCase = await transaction.caseRecord.findFirst({
-          where: { accountId, caseId, visibility: "private", deletedAt: null },
-          select: { caseId: true },
-        });
-        if (!ownedCase) {
+        if (!(await lockPrivateCase(transaction, accountId, caseId))) {
           throw new PrivateCaseUnavailable();
         }
         return transaction.conversationMessage.create({

@@ -1,7 +1,7 @@
 CREATE TYPE "CaseVisibility" AS ENUM ('private');
 CREATE TYPE "CaseLifecycle" AS ENUM ('draft', 'confirmed', 'exported', 'deleted');
 CREATE TYPE "MessageRole" AS ENUM ('user', 'assistant', 'system');
-CREATE TYPE "AuditAction" AS ENUM ('create', 'update', 'export', 'delete');
+CREATE TYPE "AuditAction" AS ENUM ('create', 'update', 'export', 'delete', 'consent_change');
 CREATE TYPE "CleanupStatus" AS ENUM ('pending', 'running', 'completed', 'failed');
 
 CREATE TABLE "accounts" (
@@ -64,6 +64,17 @@ CREATE TABLE "case_records" (
     )
 );
 
+CREATE TABLE "case_record_revisions" (
+    "revision_id" UUID NOT NULL,
+    "case_id" UUID NOT NULL,
+    "account_id" CHAR(32) NOT NULL,
+    "version" INTEGER NOT NULL,
+    "snapshot" JSONB NOT NULL,
+    "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "case_record_revisions_pkey" PRIMARY KEY ("revision_id"),
+    CONSTRAINT "case_record_revisions_positive_version" CHECK ("version" > 0)
+);
+
 CREATE TABLE "conversation_messages" (
     "message_id" UUID NOT NULL,
     "case_id" UUID NOT NULL,
@@ -117,6 +128,9 @@ CREATE UNIQUE INDEX "case_records_case_id_account_id_key" ON "case_records"("cas
 CREATE INDEX "case_records_account_id_lifecycle_idx" ON "case_records"("account_id", "lifecycle");
 CREATE INDEX "case_records_created_at_idx" ON "case_records"("created_at");
 CREATE INDEX "case_records_updated_at_idx" ON "case_records"("updated_at");
+CREATE UNIQUE INDEX "case_record_revisions_case_id_version_key" ON "case_record_revisions"("case_id", "version");
+CREATE INDEX "case_record_revisions_case_id_account_id_idx" ON "case_record_revisions"("case_id", "account_id");
+CREATE INDEX "case_record_revisions_created_at_idx" ON "case_record_revisions"("created_at");
 CREATE INDEX "conversation_messages_case_id_account_id_idx" ON "conversation_messages"("case_id", "account_id");
 CREATE INDEX "conversation_messages_created_at_idx" ON "conversation_messages"("created_at");
 CREATE INDEX "consent_events_case_id_account_id_idx" ON "consent_events"("case_id", "account_id");
@@ -129,6 +143,8 @@ ALTER TABLE "auth_sessions" ADD CONSTRAINT "auth_sessions_account_id_fkey"
   FOREIGN KEY ("account_id") REFERENCES "accounts"("account_id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "case_records" ADD CONSTRAINT "case_records_account_id_fkey"
   FOREIGN KEY ("account_id") REFERENCES "accounts"("account_id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "case_record_revisions" ADD CONSTRAINT "case_record_revisions_case_id_account_id_fkey"
+  FOREIGN KEY ("case_id", "account_id") REFERENCES "case_records"("case_id", "account_id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "conversation_messages" ADD CONSTRAINT "conversation_messages_case_id_account_id_fkey"
   FOREIGN KEY ("case_id", "account_id") REFERENCES "case_records"("case_id", "account_id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "consent_events" ADD CONSTRAINT "consent_events_case_id_account_id_fkey"
