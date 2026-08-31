@@ -52,6 +52,14 @@ Research and knowledge base are complete and verified as of 2026-08-31. Applicat
 
 This project provides information and referrals. It is not legal advice, and AI-generated assessments are not legal determinations of forced labor. If you are in immediate danger, contact local emergency services first.
 
+## Attribution and neutrality
+
+Most of the development and information collection for this project was performed by TraeCN + GLM5.3 and Codex + 5.6 Sol. These tools and their vendors are not affiliated with this project, did not take part in its initiation or decisions, and neither endorse nor bear responsibility for its content.
+
+Project ideas drew on videos and comments posted by users on Xiaohongshu, Douyin, and similar platforms. That material served as inspiration only; its original creators are not involved in this project, and their views are not represented by it.
+
+The project owner maintains a permanent neutral stance and does not side with any party's viewpoint or position. The final right of interpretation of this project belongs to the project owner.
+
 ## License
 
 [MIT](LICENSE) © 2026 ZxWang-AI
@@ -96,6 +104,14 @@ is-your-labor-forced 是一个面向全球劳动者的强迫劳动举报与识�
 ### 重要声明
 
 本平台提供信息与转介，不构成法律意见，AI 评估结果不构成对强迫劳动的法律认定。如处境危急，请优先联系当地紧急服务。
+
+### 署名与中立声明
+
+本项目的大部分开发与资料收集工作由 TraeCN + GLM5.3 与 Codex + 5.6 Sol 完成。上述工具及其所属公司未参与本项目的发起与决策，与本项目的立场和内容无任何关联，亦不为本项目背书或承担责任。
+
+本项目的创意参考了小红书、抖音等平台网友发布的视频与评论。相关内容仅作为灵感来源，原作者未参与本项目，本项目亦不代表其观点。
+
+项目维护者永久保持中立立场，不站在任何一方的观点与立场。本项目的最终解释权归项目维护者所有。
 
 ### 许可证
 
