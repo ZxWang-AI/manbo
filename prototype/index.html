@@ -59,6 +59,7 @@
     .notice { margin-top: 28px; padding: 13px 16px; border-left: 2px solid var(--accent); background: rgba(185,243,107,.055); color: #c4d5d2; font-size: 12px; line-height: 1.6; }
     .messages { display: grid; gap: 18px; margin-top: 44px; }
     .message { display: flex; gap: 13px; align-items: flex-start; animation: rise .4s ease both; }
+    .message.user-message { flex-direction: row-reverse; justify-content: flex-start; }
     .avatar { flex: 0 0 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
     .avatar.ai { background: var(--accent); color: var(--accent-ink); }
     .avatar.user { background: #30494b; color: var(--ink); }
@@ -126,7 +127,7 @@
         <div class="notice">这不是法律认定，也不是对事实真伪的判断。任何时候都可以暂停、修改、补充或删除。</div>
         <div class="messages" id="messages">
           <div class="message"><div class="avatar ai">AI</div><div class="bubble"><p>你好，我会先听你想说的内容，不要求你一次讲完整。</p><p>你可以从“发生了什么”“大概什么时候”“谁要求你做什么”中的任何一项开始。若你正面临即时危险，请先联系当地紧急服务。</p></div></div>
-          <div class="message"><div class="avatar user">我</div><div class="bubble user-bubble">我在一家电子厂工作，最近几个月经常被要求留下来加班。</div></div>
+          <div class="message user-message"><div class="avatar user">我</div><div class="bubble user-bubble">我在一家电子厂工作，最近几个月经常被要求留下来加班。</div></div>
           <div class="message"><div class="avatar ai">AI</div><div class="bubble"><p>我先记录为一条待确认的事实，不把它当作结论：</p>
             <div class="review-card"><div class="review-head"><span class="review-title">我目前理解的是……</span><span class="review-meta">可编辑 · 版本 03</span></div><div class="review-body"><div class="review-row"><span class="review-key">工作关系</span><span class="review-value">你在一家电子厂工作（来源：你的原话）</span></div><div class="review-row"><span class="review-key">时间线</span><span class="review-value">最近几个月 · 经常被要求留下加班 <span class="tag">信息不足</span></span></div><div class="review-row"><span class="review-key">下一步</span><span class="review-value">如果安全，你可以补充：是谁提出要求、拒绝后会发生什么、是否有工资或排班记录。</span></div></div></div>
           </div></div>
@@ -150,7 +151,7 @@
     const fileInput = document.getElementById('fileInput');
     const toast = document.getElementById('toast');
     const showToast = (text) => { toast.textContent = text; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2600); };
-    const addMessage = (who, text) => { const row = document.createElement('div'); row.className = 'message'; row.innerHTML = `<div class="avatar ${who === '我' ? 'user' : 'ai'}">${who}</div><div class="bubble ${who === '我' ? 'user-bubble' : ''}">${text}</div>`; messages.appendChild(row); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+    const addMessage = (who, text) => { const row = document.createElement('div'); row.className = `message${who === '我' ? ' user-message' : ''}`; row.innerHTML = `<div class="avatar ${who === '我' ? 'user' : 'ai'}">${who}</div><div class="bubble ${who === '我' ? 'user-bubble' : ''}">${text}</div>`; messages.appendChild(row); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
     composer.addEventListener('submit', (event) => { event.preventDefault(); const value = input.value.trim(); if (!value) return; addMessage('我', value.replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))); input.value = ''; setTimeout(() => addMessage('AI', '<p>已收到。我会把这段内容作为新的材料版本保存，并提示你哪些字段仍待确认。</p><span class="tag blue">版本已追加 · 可继续补充</span>'), 420); });
     document.getElementById('attachButton').addEventListener('click', () => fileInput.click());
     document.getElementById('chooseFile').addEventListener('click', () => fileInput.click());
