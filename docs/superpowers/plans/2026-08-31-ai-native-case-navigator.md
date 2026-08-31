@@ -1,0 +1,1254 @@
+# AI-Native 强迫劳动举报档案与渠道导航实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 构建一个以 AI 对话为主要入口、能够生成可追溯结构化举报档案、定性检查 ILO 指标与证据覆盖、提供法域法律导航并由用户控制保存/导出的 MVP。
+
+**Architecture:** 使用 Next.js App Router 作为单体 Web 应用，内部按 `domain`、`ai`、`knowledge`、`connectors` 和 `web` 模块分层。AI 只负责对话编排和结构化提取，所有法律导航必须经过带 `evidence_status`、`last_verified` 和 `source_id` 的知识库检索；业务层禁止数字评分、概率、排名和法律认定。MVP 将结构化档案保存到 PostgreSQL，原始图片/文件、公开页面、跨用户聚类和自动外部提交不进入本计划。
+
+**Tech Stack:** Node.js 22 LTS、Next.js 16 App Router、React 19、TypeScript strict、PostgreSQL 16、Prisma 6、Zod 4、Ajv 8（JSON Schema）、Vitest 4、Playwright 1.62、pnpm 11。AI 通过 provider-neutral adapter 接入，测试默认使用 deterministic mock provider；MVP 不在核心包中安装任何模型厂商 SDK。
+
+## Global Constraints
+
+- AI 是主要用户入口，但不能输出“构成强迫劳动”“已经违法”“举报成功率”等法律或结果性结论。
+- 系统禁止数字化证据分数、概率、排名、星级、颜色等级或报告热度排序。
+- 允许的定性状态为：ILO 指标 `hit | not_hit | insufficient`；证据覆盖 `covered | partial | gap`；法律导航 `possible | needs_review | not_covered`。
+- MVP 只保存结构化举报档案和必要对话消息；不保存原始图片、文件、证件照片、完整 IP 或设备指纹。
+- 法域必须分别记录行为发生地、用户所在地和产品流向地；未确认法域时不得映射具体法条。
+- 暴力、拘禁、自伤、未成年人或人口贩运信号优先进入危机流程，停止常规证据追问。
+- 用户可查看、修改、删除和导出档案；外部系统提交必须逐字段预览并获得独立确认。
+- 法律、渠道和动态清单只从带 `source_id`、`last_verified`、`evidence_status` 的知识库检索；`needs-review` 不得触发确定性法律表述。
+- 公开公司页、地图、跨用户事件关联、原始证据托管和 B2B API 不在 MVP 中。
+- 对话原文发送给模型前必须先做本地 PII 提示/脱敏；模型厂商、模型 ID、留存策略和区域必须由部署配置提供，不得写死在领域层。
+- 所有时间戳使用 UTC ISO 8601，日期型知识元数据使用 `YYYY-MM-DD`；所有公开 API 对象都经过 Zod `.strict()` 校验。
+- 用户界面目标为 WCAG 2.2 AA；键盘操作、焦点顺序、错误提示和危机退出属于发布阻断项。
+
+## 版本、运行环境与锁定策略
+
+| 类别 | 锁定值 | 规则 |
+|------|--------|------|
+| Runtime | Node.js `>=22.14.0 <23` | `.nvmrc` 固定 `22.14.0`，`package.json.engines` 同步约束 |
+| Package manager | pnpm `11.24.0` | `packageManager` 精确锁定并提交 `pnpm-lock.yaml` |
+| Web | Next.js `16.3.3`、React/React DOM `19.2.8` | 使用 App Router；不使用已移除的 `next lint` |
+| Language | TypeScript `5.9.3` | `strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes` 全部启用 |
+| Data | PostgreSQL `16.15`、Prisma/Client `6.19.3` | 本地和 CI 使用同一 PostgreSQL 主版本；迁移文件必须提交 |
+| Validation | Zod `4.5.4`、Ajv `8.20.0` | Zod 为运行时领域校验，Ajv 用于版本化 JSON Schema 兼容测试 |
+| Tests | Vitest `4.1.11`、Playwright `1.62.1`、`@axe-core/playwright` `4.13.0` | 单元、集成、E2E、可及性分别有独立脚本 |
+| Security | argon2 `0.45.1` | 只保存 Argon2id 恢复密钥哈希，不保存恢复密钥原文 |
+
+所有直接依赖使用精确版本并通过 Renovate/Dependabot 单独升级；禁止 `latest`、`*`、未提交 lockfile 或在同一功能提交中顺带升级依赖。若某个精确版本因安全公告必须替换，应先更新本表、lockfile、依赖审计证据和回归测试结果。
+
+## 文件与模块地图
+
+### 应用与配置
+
+- Create: `package.json`, `pnpm-workspace.yaml`, `tsconfig.json`, `next.config.ts`, `.env.example`
+- Create: `src/app/` 页面与 API Route Handlers
+- Create: `src/server/` 服务端依赖注入、认证、数据库和安全策略
+
+### 领域模型与校验
+
+- Create: `src/domain/case-record.ts` 规范化 `CaseRecord` 类型和生命周期
+- Create: `src/domain/assessment.ts` 指标、三要件和证据覆盖类型
+- Create: `src/domain/consent.ts` 同意事件和字段共享策略
+- Create: `src/domain/schemas.ts` Zod/Ajv schema
+
+### AI 与知识库
+
+- Create: `src/ai/provider.ts`, `src/ai/mock-provider.ts`, `src/ai/orchestrator.ts`
+- Create: `src/ai/prompts/*.md`, `src/ai/output-contract.ts`
+- Create: `src/knowledge/frontmatter.ts`, `src/knowledge/indexer.ts`, `src/knowledge/retriever.ts`
+- Create: `src/knowledge/source-registry.json`
+
+### 持久化与适配器
+
+- Create: `prisma/schema.prisma`, `src/server/repositories/*.ts`
+- Create: `src/connectors/connector.ts`, `src/connectors/export/markdown.ts`, `src/connectors/export/json.ts`
+- Create: `src/server/audit.ts`, `src/server/redaction.ts`
+
+### 测试与文档
+
+- Create: `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/fixtures/`
+- Modify: `README.md`, `docs/research-and-plan.md`, `docs/release-gates.md`
+
+## WBS 与实施任务
+
+### Task 1: 建立应用骨架与质量门槛
+
+**Goal:** 让空仓库具备可重复安装、类型检查、单元测试和端到端测试入口。
+
+**Dependencies:** 无。
+
+**Files:**
+- Create: `package.json`
+- Create: `pnpm-lock.yaml`
+- Create: `pnpm-workspace.yaml`
+- Create: `.nvmrc`
+- Create: `tsconfig.json`
+- Create: `next.config.ts`
+- Create: `eslint.config.mjs`
+- Create: `vitest.config.ts`
+- Create: `playwright.config.ts`
+- Create: `.env.example`
+- Create: `src/app/layout.tsx`
+- Create: `src/app/globals.css`
+- Create: `src/app/page.tsx`
+- Create: `src/server/env.ts`
+- Create: `tests/unit/health.test.ts`
+
+**Interfaces:**
+- Produces: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:integration`, `pnpm test:e2e`, `pnpm axe:e2e`, `pnpm knowledge:index`, `pnpm db:test:up`, `pnpm db:test:down` 九个稳定命令。
+- Consumes environment: `DATABASE_URL`, `SESSION_SECRET`, `APP_MODE`, `AI_PROVIDER`, `AI_GATEWAY_URL`, `AI_GATEWAY_TOKEN`, `AI_MODEL_ALIAS`, `AI_REGION`, `AI_RETENTION_POLICY_ID`; Task 1 只校验名称和格式，不发起模型请求。
+
+- [ ] **Step 1: Write the failing health test**
+
+```ts
+import { describe, expect, it } from "vitest";
+
+describe("application baseline", () => {
+  it("exposes a deterministic test command", () => {
+    expect(process.env.NODE_ENV).toBeDefined();
+  });
+});
+```
+
+- [ ] **Step 2: Run the test before scaffolding**
+
+Run: `pnpm test -- tests/unit/health.test.ts`
+Expected: FAIL because the package scripts and Vitest configuration do not exist.
+
+- [ ] **Step 3: Add the minimal project configuration**
+
+先用以下命令精确安装依赖并生成 lockfile：
+
+```powershell
+corepack enable
+corepack prepare pnpm@11.24.0 --activate
+pnpm add --save-exact next@16.3.3 react@19.2.8 react-dom@19.2.8 @prisma/client@6.19.3 zod@4.5.4 ajv@8.20.0 argon2@0.45.1 gray-matter@4.0.3
+pnpm add -D --save-exact typescript@5.9.3 @types/node@22.20.1 @types/react@19.2.18 @types/react-dom@19.2.5 prisma@6.19.3 eslint@10.9.1 eslint-config-next@16.3.3 vitest@4.1.11 happy-dom@20.12.0 @playwright/test@1.62.1 @axe-core/playwright@4.13.0 tsx@4.23.13
+```
+
+Expected: `pnpm-lock.yaml` is created and every direct dependency has an exact version. `package.json` must then define this runtime contract and scripts:
+
+```json
+{
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "engines": { "node": ">=22.14.0 <23", "pnpm": "11.24.0" },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test",
+    "axe:e2e": "playwright test tests/e2e/accessibility.spec.ts",
+    "knowledge:index": "tsx scripts/build-knowledge-index.ts",
+    "db:test:up": "docker compose up -d --wait test-db",
+    "db:test:down": "docker compose down --volumes --remove-orphans",
+    "prisma:generate": "prisma generate"
+  }
+}
+```
+
+`eslint.config.mjs` uses the ESLint 10 flat configuration and Next.js presets; do not call `next lint`:
+
+```js
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+export default defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  globalIgnores([".next/**", "coverage/**", "playwright-report/**", "src/knowledge/source-registry.json"]),
+]);
+```
+
+Configure `tsconfig.json` with `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`, and the `@/*` path alias. `vitest.config.ts` uses `happy-dom`, resolves `@` to `src`, and includes `tests/unit/**/*.test.ts`; `playwright.config.ts` starts `pnpm dev` on `127.0.0.1:3000`. `src/server/env.ts` uses a strict Zod discriminated union: `AI_PROVIDER=mock` requires no credential and is rejected when `NODE_ENV=production`; `AI_PROVIDER=gateway` requires HTTPS `AI_GATEWAY_URL`, token, model alias, region, and a reviewed retention-policy ID. `APP_MODE` is `normal | static`; `static` forbids persistence and model calls. `.env.example` contains names and safe local examples only, never a working secret.
+
+- [ ] **Step 4: Run all baseline checks**
+
+Run: `pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm test && pnpm build`
+Expected: PASS with one health test, zero ESLint warnings, and a successful production build.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add package.json pnpm-lock.yaml pnpm-workspace.yaml .nvmrc tsconfig.json next.config.ts eslint.config.mjs vitest.config.ts playwright.config.ts .env.example src/app tests/unit/health.test.ts src/server/env.ts
+git commit -m "chore: scaffold AI-native case navigator"
+```
+
+**Acceptance Criteria:**
+
+- Fresh checkout can run the nine Task 1 scripts without manual file edits (database scripts require Docker Desktop running).
+- No API key or credential is present in tracked files.
+- `src/app/page.tsx` says the application is a private report-preparation tool and does not claim public reporting is available.
+
+### Task 2: Define the domain model and non-scoring output contract
+
+**Goal:** 建立所有后续模块共用的强类型模型，确保“无分数、无法律认定”在类型层面可验证。
+
+**Dependencies:** Task 1。
+
+**Files:**
+- Create: `src/domain/assessment.ts`
+- Create: `src/domain/case-record.ts`
+- Create: `src/domain/consent.ts`
+- Create: `src/domain/schemas.ts`
+- Create: `src/domain/case-record.schema.json`
+- Create: `tests/unit/domain-schemas.test.ts`
+- Create: `tests/fixtures/case-record.ts`
+
+**Interfaces:**
+
+```ts
+export type IndicatorStatus = "hit" | "not_hit" | "insufficient";
+export type CoverageStatus = "covered" | "partial" | "gap";
+export type ElementStatus = "covered" | "partial" | "unknown";
+export type LegalStatus = "possible" | "needs_review" | "not_covered";
+export type LifecycleStatus = "draft" | "confirmed" | "exported" | "deleted";
+export type SafetyFlag = "violence" | "confinement" | "self_harm" | "minor" | "trafficking";
+
+export interface JurisdictionContext {
+  incidentCountry?: string;
+  userCountry?: string;
+  productDestination?: string;
+}
+
+export interface FactItem {
+  id: string;
+  field: string;
+  value: string;
+  sourceMessageIds: string[];
+  sourceQuote: string;
+  certainty: "user_stated" | "uncertain";
+}
+
+export interface TimelineItem {
+  id: string;
+  occurredAt?: string;
+  description: string;
+  sourceMessageIds: string[];
+}
+
+export interface IndicatorAssessment {
+  indicatorId: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
+  status: IndicatorStatus;
+  basis: SourceTrace[];
+  missing: string[];
+}
+
+export interface ElementItem { status: ElementStatus; basis: SourceTrace[]; missing: string[] }
+export interface ElementAssessment {
+  workOrService: ElementItem;
+  involuntary: ElementItem;
+  penaltyOrThreat: ElementItem;
+}
+
+export interface EvidenceCoverageItem {
+  topic: "entity_facility" | "timeline" | "work_relationship" | "coercive_conduct" | "pay_hours" | "product_flow" | "supporting_material";
+  status: CoverageStatus;
+  explanation: string;
+  sourceMessageIds: string[];
+  safeOptions: string[];
+}
+
+export interface LegalNavigationItem {
+  jurisdiction: string;
+  sourceId: string;
+  status: LegalStatus;
+  premise: string;
+  lastVerified: string;
+  stale: boolean;
+  officialUrl?: string;
+}
+
+export interface ReferralOption {
+  sourceId: string;
+  name: string;
+  officialUrl: string;
+  anonymity: "supported" | "not_supported" | "unknown";
+  feedback: "expected" | "not_expected" | "unknown";
+  userSteps: string[];
+}
+
+export interface SourceTrace {
+  kind: "conversation" | "knowledge";
+  id: string;
+  quote?: string;
+}
+
+export interface ConsentSnapshot {
+  version: string;
+  saveCase: boolean;
+  externalSharing: boolean;
+  confirmedFieldPaths: string[];
+}
+
+export interface CaseRecord {
+  schemaVersion: "1.0";
+  caseId: string;
+  accountId: string;
+  visibility: "private";
+  lifecycle: LifecycleStatus;
+  version: number;
+  jurisdiction: JurisdictionContext;
+  facts: FactItem[];
+  timeline: TimelineItem[];
+  iloIndicators: IndicatorAssessment[];
+  elements: ElementAssessment;
+  evidenceCoverage: EvidenceCoverageItem[];
+  legalNavigation: LegalNavigationItem[];
+  referrals: ReferralOption[];
+  safetyFlags: SafetyFlag[];
+  sourceTrace: SourceTrace[];
+  consent: ConsentSnapshot;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+}
+
+export type CaseDraft = Omit<CaseRecord, "caseId" | "accountId" | "createdAt" | "updatedAt" | "deletedAt" | "version">;
+export type CasePatch = Partial<Pick<CaseRecord,
+  "jurisdiction" | "facts" | "timeline" | "iloIndicators" | "elements" |
+  "evidenceCoverage" | "legalNavigation" | "referrals" | "safetyFlags" |
+  "sourceTrace" | "consent" | "lifecycle"
+>>;
+```
+
+- [ ] **Step 1: Write schema tests that reject scoring fields**
+
+```ts
+import { describe, expect, it } from "vitest";
+import { caseRecordSchema } from "@/domain/schemas";
+import { makeCaseRecordFixture } from "../fixtures/case-record";
+
+describe("CaseRecord schema", () => {
+  it("accepts qualitative statuses", () => {
+    const validRecord = {
+      caseId: "MB-test",
+      accountId: "acct-test",
+      schemaVersion: "1.0",
+      visibility: "private",
+      lifecycle: "draft",
+      version: 1,
+      jurisdiction: {},
+      facts: [],
+      timeline: [],
+      iloIndicators: [],
+      elements: {
+        workOrService: { status: "unknown", basis: [], missing: [] },
+        involuntary: { status: "unknown", basis: [], missing: [] },
+        penaltyOrThreat: { status: "unknown", basis: [], missing: [] }
+      },
+      evidenceCoverage: [],
+      legalNavigation: [],
+      referrals: [],
+      safetyFlags: [],
+      sourceTrace: [],
+      consent: { version: "v1", saveCase: true, externalSharing: false, confirmedFieldPaths: [] },
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z"
+    } as const;
+    const parsed = caseRecordSchema.parse(validRecord);
+    expect(parsed.visibility).toBe("private");
+  });
+
+  it("rejects score, probability, rank, and successRate keys", () => {
+    const validRecord = makeCaseRecordFixture();
+    expect(() => caseRecordSchema.parse({ ...validRecord, score: 0.8 })).toThrow();
+    expect(() => caseRecordSchema.parse({ ...validRecord, probability: 0.8 })).toThrow();
+    expect(() => caseRecordSchema.parse({ ...validRecord, rank: 1 })).toThrow();
+    expect(() => caseRecordSchema.parse({ ...validRecord, successRate: 0.8 })).toThrow();
+  });
+});
+```
+
+- [ ] **Step 2: Run the schema tests to verify they fail**
+
+Run: `pnpm test -- tests/unit/domain-schemas.test.ts`
+Expected: FAIL because `caseRecordSchema` and domain types are not defined.
+
+- [ ] **Step 3: Implement strict Zod schemas**
+
+Implement every interface above from one set of Zod schemas using `z.infer`; do not duplicate handwritten runtime and compile-time shapes. Use `.strict()` on every public object, `z.iso.datetime()` for timestamps, `z.iso.date()` for verification dates, `z.record()` nowhere in the public contract, and `z.never()` for explicitly prohibited keys in the negative-test helper. Generate `src/domain/case-record.schema.json` from the same status constants and validate the golden fixture with Ajv in the test. Do not add numeric assessment fields.
+
+- [ ] **Step 4: Run the schema tests**
+
+Run: `pnpm test -- tests/unit/domain-schemas.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/domain tests/unit/domain-schemas.test.ts tests/fixtures/case-record.ts
+git commit -m "feat: define non-scoring case record contract"
+```
+
+**Acceptance Criteria:**
+
+- All domain objects are strict and serializable.
+- No exported type includes `score`, `probability`, `rank`, `rating`, `successRate`, or equivalent fields.
+- Every assessment item carries a source/basis or an explicit missing-information list.
+
+### Task 3: Index the knowledge base with source status and expiry
+
+**Goal:** 将 26 个 Markdown 知识库文件转换为可检索、可核验、可过期降级的 source registry。
+
+**Dependencies:** Task 2。
+
+**Files:**
+- Create: `src/knowledge/frontmatter.ts`
+- Create: `src/knowledge/indexer.ts`
+- Create: `src/knowledge/retriever.ts`
+- Create: `src/knowledge/source-registry.json`
+- Create: `scripts/build-knowledge-index.ts`
+- Create: `tests/unit/knowledge-indexer.test.ts`
+- Create: `tests/fixtures/knowledge/verified.md`
+- Create: `tests/fixtures/knowledge/needs-review.md`
+
+**Interfaces:**
+
+```ts
+export interface KnowledgeRegistryEntry {
+  sourceId: string;
+  title: string;
+  jurisdiction: string;
+  evidenceStatus: "verified" | "design" | "needs-review";
+  lastVerified: string;
+  excerpt: string;
+  sourceUrl?: string;
+}
+
+export interface KnowledgeHit extends KnowledgeRegistryEntry {
+  stale: boolean;
+  warning?: "needs_review" | "design_source" | "stale";
+}
+
+export interface KnowledgeDocument {
+  sourceId: string;
+  title: string;
+  jurisdiction: string;
+  evidenceStatus: "verified" | "design" | "needs-review";
+  lastVerified: string;
+  excerpt: string;
+  authority: string;
+  sourceUrls: string[];
+}
+
+export function parseKnowledgeFile(path: string, markdown: string): KnowledgeDocument;
+export function isStale(lastVerified: string, now: Date, maxAgeDays?: number): boolean;
+export function buildKnowledgeRegistry(rootDir: string): Promise<KnowledgeRegistryEntry[]>;
+
+export interface KnowledgeRetriever {
+  search(query: string, options?: { jurisdiction?: string; now?: Date }): Promise<KnowledgeHit[]>;
+}
+```
+
+- [ ] **Step 1: Write parser and expiry tests**
+
+```ts
+it("parses evidence_status and marks a source stale after 90 days", () => {
+  const hit = parseKnowledgeFile("knowledge-base/test/verified.md", verifiedFixture);
+  expect(hit.evidenceStatus).toBe("verified");
+  expect(isStale(hit.lastVerified, new Date("2026-12-01"))).toBe(true);
+});
+
+it("never promotes needs-review to verified", () => {
+  const hit = parseKnowledgeFile("knowledge-base/test/needs-review.md", needsReviewFixture);
+  expect(hit.evidenceStatus).toBe("needs-review");
+});
+```
+
+- [ ] **Step 2: Run the tests before implementation**
+
+Run: `pnpm test -- tests/unit/knowledge-indexer.test.ts`
+Expected: FAIL because parser and retriever are missing.
+
+- [ ] **Step 3: Implement frontmatter parsing and registry generation**
+
+Implement `parseKnowledgeFile(path, markdown)` with `gray-matter` and a strict Zod schema for `id`, `title`, `jurisdiction`, `authority`, `last_verified`, `evidence_status`, and `sources`. Each `sources` entry is classified as an HTTPS URL, a normalized relative repository path that must exist, or a non-link citation string; legal/channel entries must contain at least one HTTPS official source before they can be returned for navigation. Reject missing fields, duplicate IDs, invalid dates, unsafe paths, malformed URLs, or text outside `knowledge-base/**/*.md`. `buildKnowledgeRegistry()` sorts by `sourceId` before serialization so the checked-in JSON is deterministic. Store only excerpts and extracted official URLs in `source-registry.json`; do not copy dynamic entity-list quantities or runtime `stale/warning` fields.
+
+- [ ] **Step 4: Implement retrieval filtering**
+
+`search(query, options)` tokenizes normalized Chinese/English text without embeddings in MVP, filters by `options.jurisdiction` when provided, derives `stale` at read time from `options.now ?? new Date()`, and sets warnings by precedence `stale` → `needs_review` → `design_source`. Empty query returns `[]`; a legal hit missing `sourceId`, `lastVerified`, `sourceUrl`, or jurisdiction is dropped and recorded as an indexing error. `scripts/build-knowledge-index.ts` calls `buildKnowledgeRegistry("knowledge-base")`, writes the stable JSON, and exits non-zero on any invalid file.
+
+- [ ] **Step 5: Run tests and index the repository knowledge base**
+
+Run: `pnpm test -- tests/unit/knowledge-indexer.test.ts && pnpm knowledge:index`
+Expected: PASS; registry contains all 26 knowledge-base files and no unresolved source reference.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/knowledge scripts/build-knowledge-index.ts tests/unit/knowledge-indexer.test.ts tests/fixtures/knowledge
+git commit -m "feat: add traceable knowledge retrieval"
+```
+
+**Acceptance Criteria:**
+
+- A legal answer cannot be produced without `sourceId`, jurisdiction, evidence status, and verification date.
+- Sources older than 90 days are marked stale and surfaced to the caller.
+- `needs-review` and `design` sources cannot be used as verified legal facts.
+
+### Task 4: Implement provider-neutral AI orchestration and crisis-first state machine
+
+**Goal:** 让 AI 对话按安全优先状态机运行，并在模型失败时降级到静态知识库。
+
+**Dependencies:** Tasks 2–3。
+
+**Files:**
+- Create: `src/ai/provider.ts`
+- Create: `src/ai/mock-provider.ts`
+- Create: `src/ai/gateway-provider.ts`
+- Create: `src/ai/orchestrator.ts`
+- Create: `src/ai/output-contract.ts`
+- Create: `src/ai/prompts/system.md`
+- Create: `src/ai/prompts/crisis.md`
+- Create: `tests/unit/ai-orchestrator.test.ts`
+- Create: `tests/fixtures/ai/crisis-message.json`
+- Create: `tests/fixtures/ai/ordinary-message.json`
+- Create: `tests/fixtures/ai/session.ts`
+
+**Interfaces:**
+
+```ts
+export type ConversationState =
+  | "WELCOME" | "SAFETY_CHECK" | "JURISDICTION_CONTEXT"
+  | "FACT_GATHERING" | "ILO_MAPPING" | "EVIDENCE_COVERAGE"
+  | "LEGAL_NAVIGATION" | "CHANNEL_OPTIONS" | "USER_REVIEW"
+  | "SAVE_OR_EXPORT" | "SAFETY_ESCALATION";
+
+export interface ConversationContext {
+  jurisdiction: JurisdictionContext;
+  facts: FactItem[];
+  timeline: TimelineItem[];
+  sourceMessageIds: string[];
+}
+
+export interface FactExtraction {
+  facts: FactItem[];
+  timeline: TimelineItem[];
+  jurisdictionPatch: Partial<JurisdictionContext>;
+}
+
+export interface ConversationSession {
+  sessionId: string;
+  state: ConversationState;
+  context: ConversationContext;
+  draft?: CaseDraft;
+}
+
+export interface AssistantTurn {
+  state: ConversationState;
+  message: string;
+  questions: string[];
+  actions: Array<"pause" | "skip" | "exit" | "show_emergency_resources">;
+  disclaimerIds: Array<"ai-assessment" | "legal-reference" | "user-decision">;
+  degraded: boolean;
+  draftPatch?: CasePatch;
+}
+
+export interface AiProvider {
+  detectSafety(input: string): Promise<SafetyFlag[]>;
+  extractFacts(input: string, context: ConversationContext): Promise<FactExtraction>;
+  mapIndicators(input: string, context: ConversationContext): Promise<IndicatorAssessment[]>;
+  summarizeCoverage(input: string, context: ConversationContext): Promise<EvidenceCoverageItem[]>;
+}
+
+export interface GatewayTurnRequest {
+  requestId: string;
+  operation: "detect_safety" | "extract_facts" | "map_indicators" | "summarize_coverage";
+  schemaVersion: "1.0";
+  locale: string;
+  input: string;
+  context: ConversationContext;
+}
+
+export interface GatewayTurnResponse { requestId: string; output: unknown }
+
+export type ModelInputDecision =
+  | { kind: "approved"; text: string; basis: "no_hint" | "redacted" | "user_confirmed" }
+  | { kind: "confirmation_required"; hintIds: string[] };
+
+export interface ModelInputPolicy {
+  prepare(input: string): Promise<ModelInputDecision>;
+}
+
+export interface ConversationOrchestrator {
+  handleMessage(input: string, session: ConversationSession): Promise<AssistantTurn>;
+}
+```
+
+- [ ] **Step 1: Write crisis precedence tests**
+
+```ts
+it("switches to safety escalation before evidence questions", async () => {
+  const turn = await orchestrator.handleMessage("他们把我锁起来，还打我", makeOrdinarySession());
+  expect(turn.state).toBe("SAFETY_ESCALATION");
+  expect(turn.questions).toHaveLength(0);
+  expect(turn.actions).toContain("show_emergency_resources");
+});
+
+it("limits ordinary turns to three questions", async () => {
+  const turn = await orchestrator.handleMessage("我被要求长期加班", makeOrdinarySession());
+  expect(turn.questions.length).toBeLessThanOrEqual(3);
+});
+```
+
+- [ ] **Step 2: Run crisis tests before implementation**
+
+Run: `pnpm test -- tests/unit/ai-orchestrator.test.ts`
+Expected: FAIL because the orchestrator is missing.
+
+- [ ] **Step 3: Implement state machine and deterministic mock provider**
+
+Create an explicit transition table keyed by `ConversationState`; do not let the model choose arbitrary next states. `handleMessage()` first checks message length (`1..10_000` characters), then runs a local deterministic safety phrase/rule screen before any gateway call. A local hit transitions directly to `SAFETY_ESCALATION`, emits only safety confirmation/local-resource lookup guidance, uses actions `show_emergency_resources`, `pause`, `exit`, and sends no text externally. If the local screen does not hit, `ModelInputPolicy.prepare()` must approve/redact the text before `AiProvider.detectSafety()` runs with a 15-second deadline; only after it returns no `SafetyFlag` may any fact/evidence method run. Any returned flag still preempts the flow. Ordinary transitions may emit at most three questions. Provider timeout, refusal, empty output, or schema failure returns the version-controlled static fallback with `degraded: true` and does not mutate the draft.
+
+Implement `GatewayAiProvider` against a platform-owned HTTPS gateway contract: `POST /v1/structured-turn`, Bearer token, `X-Model-Alias`, `X-Data-Region`, and `X-Retention-Policy-Id` headers, `GatewayTurnRequest` body, and `GatewayTurnResponse` body. It requires a `ModelInputPolicy`; only `kind="approved"` may be sent, while `confirmation_required` returns a user-review turn without a gateway call. Set 15-second timeout, maximum 256 KiB response, no automatic retry for safety/extraction calls, and redact headers/body from logs. A Node test server asserts request/response behavior without calling a real model. Task 9 must be complete before `gateway` is enabled with real user text; `MockAiProvider` remains the only E2E test provider.
+
+- [ ] **Step 4: Implement output contract validation**
+
+Validate every provider response with the Task 2 schema and `src/ai/output-contract.ts`. Reject unknown keys, any numeric assessment field, prohibited legal-conclusion phrases, message IDs absent from the session, or knowledge IDs absent from the registry. Do not silently repair a provider response; return a safe fallback. The core module receives an `AiProvider` instance through dependency injection and ships `MockAiProvider` plus the vendor-neutral `GatewayAiProvider`; the deployment gateway owns vendor SDK/model selection, so no vendor SDK or vendor model ID appears in the application repository.
+
+- [ ] **Step 5: Run tests**
+
+Run: `pnpm test -- tests/unit/ai-orchestrator.test.ts`
+Expected: PASS for crisis precedence, three-question limit, provider failure fallback, and score-field rejection.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/ai tests/unit/ai-orchestrator.test.ts tests/fixtures/ai
+git commit -m "feat: add crisis-first AI orchestration"
+```
+
+**Acceptance Criteria:**
+
+- Crisis signals always preempt evidence gathering.
+- Ordinary turns ask no more than three questions.
+- Provider failure never produces a false “saved”, “submitted”, or legal conclusion state.
+- No AI response contains numeric score, probability, ranking, or success-rate fields.
+
+### Task 5: Add pseudonymous authentication and private CaseRecord persistence
+
+**Goal:** 让用户能够创建不要求邮箱的化名账户，并长期保存自己的结构化举报档案。
+
+**Dependencies:** Tasks 1–4。
+
+**Files:**
+- Create: `compose.yaml`
+- Create: `vitest.integration.config.ts`
+- Create: `prisma/migrations/202608310001_init_case_records/migration.sql`
+- Create: `prisma/schema.prisma`
+- Create: `src/server/auth.ts`
+- Create: `src/server/db.ts`
+- Create: `src/server/repositories/account-repository.ts`
+- Create: `src/server/repositories/case-repository.ts`
+- Create: `src/server/repositories/message-repository.ts`
+- Create: `src/server/repositories/consent-repository.ts`
+- Create: `tests/setup/integration.ts`
+- Create: `tests/integration/case-repository.test.ts`
+
+**Interfaces:**
+
+```ts
+export interface CaseRepository {
+  createDraft(accountId: string, draft: CaseDraft): Promise<CaseRecord>;
+  getPrivate(accountId: string, caseId: string): Promise<CaseRecord | null>;
+  updatePrivate(accountId: string, caseId: string, patch: CasePatch, expectedVersion: number): Promise<CaseRecord>;
+  markDeleted(accountId: string, caseId: string): Promise<void>;
+}
+
+export interface AuthSession {
+  accountId: string;
+  sessionId: string;
+  expiresAt: string;
+}
+
+export interface AccountRepository {
+  createPseudonymous(): Promise<{ accountId: string; alias: string; recoverySecret: string }>;
+  recover(alias: string, recoverySecret: string): Promise<AuthSession | null>;
+}
+```
+
+- [ ] **Step 1: Write persistence tests**
+
+```ts
+it("does not allow another account to read a private case", async () => {
+  const record = await repository.createDraft("acct-a", draftCase);
+  await expect(repository.getPrivate("acct-b", record.caseId)).resolves.toBeNull();
+});
+
+it("deletion changes lifecycle and excludes the record from reads", async () => {
+  const record = await repository.createDraft("acct-a", draftCase);
+  await repository.markDeleted("acct-a", record.caseId);
+  await expect(repository.getPrivate("acct-a", record.caseId)).resolves.toBeNull();
+});
+```
+
+- [ ] **Step 2: Run integration tests before schema implementation**
+
+Run: `pnpm db:test:up; pnpm test:integration -- tests/integration/case-repository.test.ts`
+Expected: FAIL because Prisma schema, migration, and repositories are missing; then run `pnpm db:test:down` to remove the isolated test database.
+
+- [ ] **Step 3: Implement Prisma models**
+
+Create Prisma models `Account`, `CaseRecord`, `ConversationMessage`, `ConsentEvent`, `AuditEvent`, and `CleanupJob`. `CaseRecord` stores the Task 2 arrays/objects in JSON columns and validates them with Zod on every repository ingress/egress; `visibility` is constrained to `private`, `lifecycle` supports `draft`, `confirmed`, `exported`, `deleted`, and `version` is incremented atomically. Add indexes only on `(accountId, lifecycle)`, `(caseId, accountId)`, cleanup status, and timestamps—never on narrative text or company names. Do not create `EvidenceBlob`, public report, ranking, or event-cluster tables in MVP.
+
+`compose.yaml` defines only an isolated `postgres:16.15-bookworm` service named `test-db`, database `manbo_test`, port `55432`, a healthcheck using `pg_isready`, and a named test volume. `vitest.integration.config.ts` includes only `tests/integration/**/*.test.ts`, sets `fileParallelism: false`, injects the local test URL when `DATABASE_URL` is absent, and loads `tests/setup/integration.ts`; setup truncates only tables in the `manbo_test` database and aborts if the URL does not contain `manbo_test`.
+
+- [ ] **Step 4: Implement pseudonymous credentials**
+
+Generate a 128-bit random `accountId`, human-readable random alias, and 256-bit recovery secret with `node:crypto`; return the recovery secret exactly once and store only an Argon2id hash. Do not require email or phone. Recovery uses a constant-time Argon2 verification path and rate-limits by alias hash without storing IP/device identifiers. Explain that losing the recovery secret prevents account recovery. Session cookies must be random opaque IDs, stored server-side as hashes, `HttpOnly`, `Secure` in production, `SameSite=Lax`, path `/`, and expire after 30 minutes of inactivity or 12 hours absolute.
+
+- [ ] **Step 5: Implement ownership-checked repositories**
+
+Every read/update/delete query includes both `accountId` and `caseId`; deleted records are excluded by default. `updatePrivate()` uses `updateMany({ where: { accountId, caseId, version: expectedVersion, deletedAt: null } })` and throws `ConcurrencyConflict` when the affected row count is zero. Persist a minimal audit event for create/update/export/delete without IP, device identifiers, narrative, fact values, or source quotes.
+
+- [ ] **Step 6: Run integration tests and migrations**
+
+Run:
+
+```powershell
+pnpm db:test:up
+$env:DATABASE_URL = "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public"
+pnpm exec prisma generate
+pnpm exec prisma migrate dev --name init_case_records
+pnpm test:integration
+pnpm db:test:down
+Remove-Item Env:DATABASE_URL
+```
+
+Expected: PostgreSQL healthcheck passes; migration is created; integration suite passes; cross-account read returns `null`, stale versions raise `ConcurrencyConflict`, deleted records are absent, and the test container/volume is removed.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add compose.yaml vitest.integration.config.ts prisma src/server tests/setup/integration.ts tests/integration/case-repository.test.ts
+git commit -m "feat: persist private pseudonymous case records"
+```
+
+**Acceptance Criteria:**
+
+- Users can create a pseudonymous account without email/phone.
+- A case is private by schema and repository enforcement, not only by UI convention.
+- Original files are not accepted by any MVP persistence endpoint.
+- Delete, export, and update operations are auditable without storing IP/device identifiers.
+
+### Task 6: Build the AI conversation UI and user review workspace
+
+**Goal:** 用对话替代表单，并让用户在保存前审阅、修改和确认结构化档案。
+
+**Dependencies:** Tasks 4–5。
+
+**Files:**
+- Create: `src/app/(public)/start/page.tsx`
+- Create: `src/app/(private)/cases/[caseId]/page.tsx`
+- Create: `src/components/chat/conversation.tsx`
+- Create: `src/components/case-review/case-review.tsx`
+- Create: `src/components/case-review/indicator-matrix.tsx`
+- Create: `src/components/case-review/evidence-coverage.tsx`
+- Create: `src/components/common/disclaimer.tsx`
+- Create: `src/app/api/accounts/route.ts`
+- Create: `src/app/api/conversation/route.ts`
+- Create: `src/app/api/cases/route.ts`
+- Create: `src/app/api/cases/[caseId]/route.ts`
+- Create: `tests/e2e/conversation-review.spec.ts`
+- Create: `tests/e2e/accessibility.spec.ts`
+
+**Interfaces:**
+
+```ts
+export type CreateAccountResponse = { alias: string; recoverySecret: string };
+
+export type ConversationRequest = { sessionId: string; message: string };
+export type ConversationResponse = { assistant: AssistantTurn; caseDraft?: CaseDraft };
+
+export type PatchCaseRequest = { patch: CasePatch; expectedVersion: number };
+export type PatchCaseResponse = { case: CaseRecord };
+export type CreateCaseRequest = { draft: CaseDraft };
+export type CreateCaseResponse = { case: CaseRecord };
+export type ApiError = {
+  code: "INVALID_INPUT" | "UNAUTHENTICATED" | "NOT_FOUND" | "VERSION_CONFLICT" | "DEGRADED";
+  message: string;
+  requestId: string;
+};
+```
+
+Routes: `POST /api/accounts` creates the pseudonymous session; `POST /api/conversation` accepts `ConversationRequest`; `POST /api/cases` creates a private draft; `GET/PATCH/DELETE /api/cases/:caseId` always derives `accountId` from the session cookie and never accepts it from request JSON.
+
+- [ ] **Step 1: Write the failing Playwright flow**
+
+```ts
+test("user can converse, review indicators, and save privately", async ({ page }) => {
+  await page.goto("/start");
+  await page.getByRole("textbox", { name: "描述你的经历" }).fill("我被扣留护照，无法自由离开工作地点");
+  await page.getByRole("button", { name: "发送" }).click();
+  await expect(page.getByText("ILO 指标矩阵")).toBeVisible();
+  await expect(page.getByText("用户报告，未经独立核实")).toBeVisible();
+  await page.getByRole("button", { name: "保存为私密档案" }).click();
+  await expect(page.getByText("仅本人可见")).toBeVisible();
+});
+```
+
+- [ ] **Step 2: Run the E2E test before UI implementation**
+
+Run: `pnpm test:e2e tests/e2e/conversation-review.spec.ts`
+Expected: FAIL because routes and components are missing.
+
+- [ ] **Step 3: Implement the conversation page**
+
+Build the start page as a server component containing a client `Conversation` island. The first model call may run with an ephemeral server-side session and must not persist the message. Only when the user chooses “保存为私密档案” does the UI call `POST /api/accounts`, show the one-time recovery secret in a copy/download panel, require acknowledgement, then call `POST /api/cases` with the user-confirmed draft; if the user leaves before saving, no case/account/conversation row remains. The page shows platform identity, privacy limitations, crisis exit, pause/skip controls, request status, retry, and a message composer with a 10,000-character limit. It must not render a file input or accept drag/drop uploads. Every substantive assessment response renders the fixed `ai-assessment`, `legal-reference`, and `user-decision` disclaimers.
+
+- [ ] **Step 4: Implement review components**
+
+Render facts with source quotes and message IDs; all 11 indicators in canonical ILO order including `not_hit` and `insufficient`; the three elements; qualitative evidence coverage; legal-navigation source/date/stale status; referral choices; and safety flags. Each editable field has “确认 / 修改 / 删除 / 标记不确定” controls. Use text plus icons—not status colors alone. Do not render progress/score bars, rankings, “verified company” labels, public visibility controls, or phrases that imply authority submission.
+
+- [ ] **Step 5: Implement optimistic-concurrency PATCH**
+
+Parse bodies with strict Zod schemas, cap request size at 64 KiB, require `expectedVersion`, and return HTTP 409 with `ApiError.code="VERSION_CONFLICT"` when a stale review attempts to overwrite a newer version. Return only the canonical server record after a successful patch. HTTP mapping is fixed: 400 invalid input, 401 missing/expired session, 404 wrong owner or absent/deleted case (same response to avoid enumeration), 409 version conflict, 503 safe degraded mode.
+
+- [ ] **Step 6: Run E2E and accessibility checks**
+
+Run:
+
+```powershell
+pnpm db:test:up
+$env:DATABASE_URL = "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public"
+$env:AI_PROVIDER = "mock"
+$env:SESSION_SECRET = "0123456789abcdef0123456789abcdef"
+pnpm exec prisma migrate deploy
+pnpm test:e2e tests/e2e/conversation-review.spec.ts
+pnpm axe:e2e
+pnpm db:test:down
+Remove-Item Env:DATABASE_URL, Env:AI_PROVIDER, Env:SESSION_SECRET
+```
+
+Expected: PASS; Axe reports zero serious/critical violations; keyboard navigation, focus restoration after errors, labels, live-region status, and crisis exit are usable.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/app src/components tests/e2e/conversation-review.spec.ts tests/e2e/accessibility.spec.ts playwright.config.ts
+git commit -m "feat: add AI conversation and private case review"
+```
+
+**Acceptance Criteria:**
+
+- A user can start with natural language, see AI-extracted facts and indicators, correct them, and save a private case.
+- All indicators and evidence gaps are visible; no score or legal conclusion is shown.
+- Crisis mode stops normal questions and provides a safe exit.
+- UI never claims a report was sent to an authority.
+
+### Task 7: Implement qualitative evidence coverage and legal/channel navigation
+
+**Goal:** 将“证据是否覆盖常见提交要素”和“可能相关法律/渠道”实现为可追溯定性输出。
+
+**Dependencies:** Tasks 2–4 and 6.
+
+**Files:**
+- Create: `src/domain/evidence-coverage.ts`
+- Create: `src/server/evidence-coverage.ts`
+- Create: `src/server/legal-navigation.ts`
+- Create: `src/server/referrals.ts`
+- Create: `src/app/api/assessment/route.ts`
+- Create: `tests/unit/evidence-coverage.test.ts`
+- Create: `tests/integration/legal-navigation.test.ts`
+- Create: `tests/fixtures/assessment.ts`
+
+**Interfaces:**
+
+```ts
+export function assessEvidenceCoverage(input: CaseDraft): EvidenceCoverageItem[];
+export function buildLegalNavigation(input: JurisdictionContext, hits: KnowledgeHit[]): LegalNavigationItem[];
+export function buildReferralOptions(input: JurisdictionContext, safety: SafetyFlag[]): ReferralOption[];
+
+export type AssessmentRequest = { draft: CaseDraft };
+export type AssessmentResponse = {
+  evidenceCoverage: EvidenceCoverageItem[];
+  legalNavigation: LegalNavigationItem[];
+  referrals: ReferralOption[];
+  notices: string[];
+};
+```
+
+- [ ] **Step 1: Write qualitative coverage tests**
+
+```ts
+it("reports a gap without converting it into a score", () => {
+  const coverage = assessEvidenceCoverage(makeNarrativeOnlyDraft());
+  expect(coverage.find((item) => item.topic === "timeline")?.status).toBe("gap");
+  expect(JSON.stringify(coverage)).not.toMatch(/score|probability|percent|rating/i);
+});
+```
+
+- [ ] **Step 2: Run tests before implementation**
+
+Run: `pnpm test -- tests/unit/evidence-coverage.test.ts`
+Expected: FAIL because the evidence-coverage service is missing. After the database harness exists, run `pnpm db:test:up; pnpm test:integration -- tests/integration/legal-navigation.test.ts; pnpm db:test:down`; Expected: FAIL because legal navigation is missing.
+
+- [ ] **Step 3: Implement coverage rules**
+
+Implement a deterministic rule table for the seven `EvidenceCoverageItem.topic` values defined in Task 2. `covered` requires at least one user-confirmed fact plus its source message; `partial` means the topic exists but time/entity/source linkage is incomplete; `gap` means no user-confirmed fact exists. Every item includes plain-language `explanation`, exact `sourceMessageIds`, and safe options chosen from version-controlled copy. The rule table never consumes `iloIndicators` as a shortcut and never infers that coverage equals legal sufficiency.
+
+- [ ] **Step 4: Implement legal navigation**
+
+For each candidate, require that the law's jurisdiction matches the relevant confirmed dimension: employment/criminal law uses `incidentCountry`; user-protection resources use `userCountry`; import-control law uses `productDestination`. Drop `design` sources. Map non-stale `verified` to `possible`; map `needs-review` or stale sources to `needs_review`; return `not_covered` only with a registry source explaining scope. Attach source ID, premise, verification date, stale flag, and official URL. For `needs_review`, fixed copy is “可能相关，需核实”，never a paraphrased legal conclusion.
+
+- [ ] **Step 5: Implement referral routing**
+
+Read referral candidates only from source-registry channel entries, filter by confirmed jurisdiction and freshness, and return at most three stable-sorted options with anonymity, feedback expectations, official URL, source ID, and user-controlled steps. If no reliable candidate exists, return `[]` plus the static “需人工核实渠道” explanation in the API layer. Any crisis flag suppresses ordinary comparisons and returns only region-appropriate safety resources; an unconfirmed location asks for country/region or shows global emergency guidance without geolocation inference.
+
+- [ ] **Step 6: Run tests**
+
+Run: `pnpm test -- tests/unit/evidence-coverage.test.ts; pnpm db:test:up; pnpm test:integration -- tests/integration/legal-navigation.test.ts; pnpm db:test:down`
+Expected: both suites PASS; no numeric score or unsupported legal claim is present; test database is removed.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/domain/evidence-coverage.ts src/server/evidence-coverage.ts src/server/legal-navigation.ts src/server/referrals.ts src/app/api/assessment tests/unit/evidence-coverage.test.ts tests/integration/legal-navigation.test.ts tests/fixtures/assessment.ts
+git commit -m "feat: add qualitative evidence and legal navigation"
+```
+
+**Acceptance Criteria:**
+
+- Evidence output only describes coverage and gaps, never legal sufficiency or a score.
+- Specific law references require confirmed jurisdiction context and traceable source metadata.
+- Crisis referral always takes precedence over ordinary channel suggestions.
+
+### Task 8: Add export connectors and user-confirmed handoff
+
+**Goal:** 让用户将私密档案转换为通用材料，并为未来 CBP/BAFA 等适配器保留稳定接口。
+
+**Dependencies:** Tasks 2, 5, and 7.
+
+**Files:**
+- Create: `src/connectors/connector.ts`
+- Create: `src/connectors/export/markdown.ts`
+- Create: `src/connectors/export/json.ts`
+- Create: `src/connectors/registry.ts`
+- Create: `src/app/api/cases/[caseId]/export/route.ts`
+- Create: `tests/unit/export-connectors.test.ts`
+- Create: `tests/fixtures/connectors.ts`
+
+**Interfaces:**
+
+```ts
+export interface Connector {
+  describe(): ConnectorDescription;
+  validate(record: CaseRecord, confirmation: UserConfirmation): ValidationIssue[];
+  preview(record: CaseRecord, confirmation: UserConfirmation): Promise<ExportPreview>;
+}
+
+export interface ConnectorDescription {
+  connectorId: "markdown" | "json" | "manual";
+  targetName: string;
+  jurisdiction: string;
+  supportedFieldPaths: string[];
+  attachmentPolicy: "none";
+  lastVerified: string;
+}
+
+export interface ValidationIssue {
+  fieldPath: string;
+  code: "missing" | "unconfirmed" | "unsupported";
+  message: string;
+}
+
+export interface UserConfirmation {
+  confirmed: true;
+  caseId: string;
+  caseVersion: number;
+  connectorId: ConnectorDescription["connectorId"];
+  fieldPaths: string[];
+  consentEventId: string;
+}
+
+export interface ExportPreview {
+  exportId: string;
+  connectorId: ConnectorDescription["connectorId"];
+  caseVersion: number;
+  fieldPaths: string[];
+  mediaType: "text/markdown" | "application/json";
+  text: string;
+  disclaimerIds: string[];
+  expiresAt: string;
+}
+
+export type SubmissionStatus = "unknown" | "received" | "processing" | "closed";
+export interface ExternalSubmissionConnector extends Connector {
+  submit(record: CaseRecord, confirmation: UserConfirmation, exportId: string): Promise<SubmitResult>;
+  status(referenceId: string): Promise<SubmissionStatus>;
+}
+
+export type SubmitResult =
+  | { kind: "manual_handoff"; officialUrl: string; exportId: string }
+  | { kind: "received"; referenceId: string; receivedAt: string };
+```
+
+- [ ] **Step 1: Write export and consent tests**
+
+```ts
+it("exports only user-confirmed fields", async () => {
+  const preview = await markdownConnector.preview(makePrivateCaseRecord(), makeNarrativeConfirmation());
+  expect(preview.text).toContain("用户报告（未经独立核实）");
+  expect(preview.text).not.toContain("password");
+});
+
+it("never reports received without a target reference", async () => {
+  const record = makePrivateCaseRecord();
+  const confirmation = makeManualConfirmation();
+  const preview = await manualConnector.preview(record, confirmation);
+  const result = await manualConnector.submit(record, confirmation, preview.exportId);
+  expect(result.kind).toBe("manual_handoff");
+});
+```
+
+- [ ] **Step 2: Run tests before implementation**
+
+Run: `pnpm test -- tests/unit/export-connectors.test.ts`
+Expected: FAIL because connectors are missing.
+
+- [ ] **Step 3: Implement Markdown and JSON exporters**
+
+Resolve each requested JSON Pointer-style `fieldPath` against an allowlist, require it to appear in both `UserConfirmation.fieldPaths` and the case consent snapshot, and reject wildcard/root selection. Include only confirmed facts, timeline, ILO matrix, evidence coverage, legal navigation, source dates, safety flags, consent version, and fixed disclaimers. Exclude credentials, account/session IDs, internal audit metadata, raw message text, files, and unconfirmed fields. Serialize JSON with stable key order and Markdown with explicit “用户报告（未经独立核实）”.
+
+- [ ] **Step 4: Implement connector validation and manual handoff**
+
+`preview()` creates and persists a 15-minute preview record with an `exportId` bound to `caseId`, `caseVersion`, connector, fields, and consent event; preview rendering is deterministic, but ID creation uses the injected clock/ID generator. Markdown/JSON implement only `Connector` and create a local download. A `ManualHandoffConnector` implements `ExternalSubmissionConnector`: `submit()` also receives the `exportId`, rejects missing/expired/mismatched confirmation, refuses if the case version changed after preview, and returns `manual_handoff` with the verified official URL; `status()` returns `unknown`. Do not add browser automation or automatic submission in MVP; the `received` union branch remains unreachable until a separately approved connector can verify an external reference ID.
+
+- [ ] **Step 5: Run tests and update lifecycle**
+
+Run: `pnpm test -- tests/unit/export-connectors.test.ts`
+Expected: PASS; export changes lifecycle to `exported` only after a successful local export, not after an unverified external submission.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/connectors src/app/api/cases tests/unit/export-connectors.test.ts tests/fixtures/connectors.ts
+git commit -m "feat: add user-controlled case export connectors"
+```
+
+**Acceptance Criteria:**
+
+- Users can preview and export a private case without sending it anywhere.
+- Each connector declares fields, source, and handoff behavior.
+- No connector claims “received” without a verifiable reference ID.
+- No automatic external submission exists in MVP.
+
+### Task 9: Implement privacy, deletion, audit, and model-failure controls
+
+**Goal:** 把安全承诺落实为默认设置、数据生命周期和可演练的故障行为。
+
+**Dependencies:** Tasks 4–8。
+
+**Files:**
+- Create: `src/server/redaction.ts`
+- Create: `src/server/audit.ts`
+- Create: `src/server/retention.ts`
+- Create: `src/app/api/cases/[caseId]/delete/route.ts`
+- Create: `tests/integration/privacy-controls.test.ts`
+- Modify: `docs/risk-register.md`
+- Modify: `docs/release-gates.md`
+
+**Interfaces:**
+
+```ts
+export function detectPotentialPersonalData(text: string): PersonalDataHint[];
+export function deleteCase(accountId: string, caseId: string): Promise<DeletionReceipt>;
+export function recordAudit(event: AuditEvent): Promise<void>;
+
+export interface PersonalDataHint {
+  hintId: string;
+  kind: "phone" | "email" | "identity_document" | "precise_address";
+  spanStart: number;
+  spanEnd: number;
+  maskedPreview: string;
+}
+
+export interface DeletionReceipt {
+  receiptId: string;
+  caseId: string;
+  deletedAt: string;
+  targets: Array<"primary_record" | "conversation_messages" | "search_index" | "cache" | "backup_queue">;
+  externalSystems: "not_applicable";
+}
+
+export interface AuditEvent {
+  eventId: string;
+  accountId: string;
+  caseId?: string;
+  action: "create" | "update" | "export_preview" | "export" | "delete" | "consent_change" | "model_fallback";
+  occurredAt: string;
+  metadata: { connectorId?: string; fieldCount?: number; reasonCode?: string };
+}
+```
+
+- [ ] **Step 1: Write privacy control tests**
+
+```ts
+it("does not persist raw uploaded file content", async () => {
+  const response = await request.post("/api/cases").send({ filename: "passport.jpg", bytes: "..." });
+  expect(response.status).toBe(415);
+});
+
+it("deletion receipt lists primary and queued cleanup targets", async () => {
+  const receipt = await deleteCase("acct-a", "case-a");
+  expect(receipt.targets).toEqual(expect.arrayContaining(["primary_record", "search_index", "backup_queue"]));
+});
+```
+
+- [ ] **Step 2: Run tests before implementation**
+
+Run: `pnpm db:test:up; pnpm test:integration -- tests/integration/privacy-controls.test.ts`
+Expected: FAIL because privacy services and delete route are missing; then run `pnpm db:test:down`.
+
+- [ ] **Step 3: Implement PII hints and explicit user confirmation**
+
+Detect likely phone, email, identity-document, and precise-address patterns with locale-aware regexes that return only `PersonalDataHint` spans and masked previews. Show a confirmation prompt with “保留原文 / 使用脱敏版本 / 删除该片段”; do not silently rewrite the user’s narrative. Store only the user-confirmed version and retain the hint decision in the consent event, never the discarded raw span.
+
+- [ ] **Step 4: Implement deletion and retention jobs**
+
+`deleteCase()` runs a transaction that marks the case deleted, removes conversation messages, and appends idempotent `CleanupJob` rows for `search_index`, `cache`, and `backup_queue`; it returns a signed `DeletionReceipt`. All repository reads exclude deleted records and cleanup workers are safe to retry. The receipt explicitly says external systems are not applicable until a connector has separately shared data; never claim deletion from systems outside platform control.
+
+- [ ] **Step 5: Implement audit and degraded-mode logging**
+
+Audit create/update/export-preview/export/delete, consent changes, and model fallback with the `AuditEvent` shape, without IP/device identifiers, credentials, raw narrative, source quotes, or full field values. Hash request IDs with a per-deployment salt only for correlation. When AI or knowledge retrieval fails, expose `degraded: true`, a machine-readable `reasonCode`, and static crisis/legal resources; never present partial model output as saved or submitted.
+
+- [ ] **Step 6: Run tests and security checks**
+
+Run:
+
+```powershell
+pnpm db:test:up
+$env:DATABASE_URL = "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public"
+pnpm exec prisma migrate deploy
+pnpm test:integration -- tests/integration/privacy-controls.test.ts
+pnpm audit --audit-level=high
+pnpm db:test:down
+Remove-Item Env:DATABASE_URL
+```
+
+Expected: PASS; raw-file request returns HTTP 415, deletion receipt names all five cleanup targets, deleted reads remain empty after retries, and `pnpm audit` reports no high-severity issue. Any exception must be recorded with owner, expiry date, and mitigation in `docs/risk-register.md` before release.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/server src/app/api/cases docs/risk-register.md docs/release-gates.md tests/integration/privacy-controls.test.ts
+git commit -m "feat: enforce privacy and failure controls"
+```
+
+**Acceptance Criteria:**
+
+- Raw files are rejected by MVP APIs and never reach persistence.
+- Deletion has a verifiable receipt and asynchronous cleanup path.
+- Audit records contain actions and timestamps but no raw sensitive content or device identifiers.
+- AI/knowledge failures degrade safely without false status claims.
+
+### Task 10: End-to-end quality, release gates, and operational readiness
+
+**Goal:** 证明 MVP 在安全、可及性、来源可追溯和用户控制方面达到 Gate 1。
+
+**Dependencies:** Tasks 1–9。
+
+**Files:**
+- Create: `tests/e2e/crisis-flow.spec.ts`
+- Create: `tests/e2e/export-flow.spec.ts`
+- Create: `tests/e2e/delete-flow.spec.ts`
+- Create: `tests/fixtures/golden-cases/*.json`
+- Create: `tests/e2e/policy-copy.spec.ts`
+- Create: `docs/operations-runbook.md`
+- Create: `docs/security/threat-model.md`
+- Create: `docs/privacy/dpia-screening.md`
+- Create: `docs/testing/red-team-report.md`
+- Modify: `README.md`
+- Modify: `docs/release-gates.md`
+- Modify: `docs/research-and-plan.md`
+
+- [ ] **Step 1: Write release-blocking E2E tests**
+
+Cover these exact scenarios with stable `data-testid` hooks and independent fixtures:
+
+1. Crisis message stops normal questions and displays emergency-resource guidance.
+2. Missing jurisdiction prevents specific legal citation.
+3. `needs-review` source is shown with a freshness warning.
+4. User edits an indicator and saves a private record.
+5. Export requires preview and confirmation.
+6. Delete removes the record from subsequent reads.
+7. No page contains a score, probability, ranking, “blacklist”, “verified company”, or “submitted to authority” claim.
+8. A gateway request is blocked when `ModelInputPolicy` returns `confirmation_required`.
+9. A static-mode deployment neither calls the model nor writes a case.
+10. Golden cases cover simplified Chinese, English, one additional pilot locale, mixed-language input, information-insufficient input, and prompt-injection attempts; unsupported locales disclose the fallback language instead of silently mistranslating.
+
+- [ ] **Step 2: Run the complete test suite**
+
+Run:
+
+```powershell
+pnpm db:test:up
+$env:DATABASE_URL = "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public"
+$env:AI_PROVIDER = "mock"
+$env:SESSION_SECRET = "0123456789abcdef0123456789abcdef"
+pnpm exec prisma migrate deploy
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:integration
+pnpm test:e2e
+pnpm axe:e2e
+pnpm db:test:down
+Remove-Item Env:DATABASE_URL, Env:AI_PROVIDER, Env:SESSION_SECRET
+```
+
+Expected: PASS with zero release-blocking failures and the isolated test database removed.
+
+- [ ] **Step 3: Run static policy audits**
+
+Run:
+
+```powershell
+rg -n -i "score|probability|rank|rating|successRate|blacklist|verified company|已提交|构成强迫劳动|已经违法|举报成功率|足以证明违法" src tests
+```
+
+Expected: matches are confined to `tests/e2e/policy-copy.spec.ts`, schema negative tests, and the static policy-audit command itself; no user-facing production copy, prompt, serialized API field, or connector output may match. If a safety disclaimer needs a prohibited term to explain what the app does not do, isolate it in an allowlisted file and assert it never appears in assessment output.
+
+- [ ] **Step 4: Complete Gate 0/1 evidence**
+
+Record golden-case results, source-index output, dependency audit, accessibility report, deletion drill, crisis drill, model-input confirmation drill, and model-fallback drill in `docs/operations-runbook.md`. `docs/security/threat-model.md` covers trust boundaries, assets, attackers, misuse cases, gateway/DB/backup flows, mitigations, and residual risks; `docs/privacy/dpia-screening.md` records lawful-basis questions, special-category data, processor/region/retention decisions, data-subject controls, and whether a full DPIA is required; `docs/testing/red-team-report.md` records multilingual crisis misses, prompt injection, source fabrication, legal-overclaiming, and unsafe evidence-gathering attempts. Each evidence item records commit SHA, command, UTC timestamp, artifact path, pass/fail, and reviewer. Mark Gate 1 only when every checklist item in `docs/release-gates.md` has a named reviewer and evidence link.
+
+- [ ] **Step 5: Update project documentation**
+
+README must state the AI-Native MVP boundary and list exactly what is not shipped. Research plan must point to the implementation plan and retain “no legal advice” language. Release gates must explicitly block raw evidence storage, public pages, event clustering, and automatic submission.
+
+- [ ] **Step 6: Commit the release evidence**
+
+```bash
+git add tests/e2e tests/fixtures/golden-cases docs/operations-runbook.md docs/security/threat-model.md docs/privacy/dpia-screening.md docs/testing/red-team-report.md README.md docs/release-gates.md docs/research-and-plan.md
+git commit -m "test: establish MVP release evidence"
+```
+
+**Acceptance Criteria:**
+
+- Gate 1 passes only with all release-blocking tests and evidence present.
+- The application remains private-by-default and non-scoring.
+- The app can be disabled or degraded to static crisis/legal resources without claiming work was saved or submitted.
+- No unreviewed external connector, public report page, raw evidence store, ranking, or B2B endpoint is reachable in production configuration.
+
+## Dependency and Milestone Summary
+
+| Milestone | Tasks | Exit condition |
+|-----------|-------|----------------|
+| M0 基线 | 1–2 | App runs; domain schema rejects scoring fields |
+| M1 可追溯 AI | 3–4 | Knowledge sources are traceable; crisis-first orchestration passes golden tests |
+| M2 私密档案 | 5–6 | User can converse, review, edit, save and delete a private case |
+| M3 渠道准备 | 7–8 | Qualitative coverage, legal navigation and user-confirmed export work |
+| M4 安全发布 | 9–10 | Privacy drills, E2E/accessibility tests and Gate 1 evidence complete |
+
+## Explicit Non-Deliverables
+
+本计划不交付：原始证据文件上传或托管、公司公开页面、地图、报告数量排名、跨用户事件聚类、自动向 CBP/BAFA/劳动监察机构提交、法律认定、营救或任何真实用户数据迁移。上述能力必须另立设计规格并通过对应发布门禁。
