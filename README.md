@@ -1,6 +1,6 @@
 # 慢波 Manbo（Forced-Labor-Detector）
 
-慢波 Manbo 是一个面向强迫劳动相关信息整理与举报准备的研究项目。当前仓库是文档与知识库基线，**尚未提供可供公众使用的应用、执法服务或法律认定**。
+慢波 Manbo 是一个面向强迫劳动相关信息整理与举报准备的 AI-Native 项目。当前仓库包含文档、知识库和可交互视觉原型，**尚未提供可供公众使用的生产应用、执法服务或法律认定**。
 
 > 波如正义，不需要快，但是会来。
 > Waves, like justice, need not be fast, but they will come.
@@ -21,8 +21,10 @@ Manbo 不替官方机构调查或认定，不提供法律意见、心理治疗�
 |------|------|
 | 研究报告与产品方案 | 已完成一次治理审阅（2026-08-31），不是法律意见 |
 | 知识库 | 26 个 Markdown 文件；按来源和核实日期维护 |
-| 应用代码 | 尚未开始 |
-| 公开举报、公司页、地图、证据托管、B2B API | 未发布，必须通过发布门禁 |
+| 可视化原型 | 已加入 `prototype/`；可展示对话、材料、AI 初审与档案状态，不接入真实数据 |
+| 生产应用代码 | 尚未开始；已确认方案 A 与详细实施计划 |
+| 长期私密证据托管 | 已纳入方案 A 设计，尚未发布；启用前必须通过媒体安全与隐私门禁 |
+| 公开举报、公司页、地图、跨案件聚合、B2B API | 未发布，必须通过发布门禁 |
 | 真实用户数据 | 未收集 |
 
 “已核实”只表示某条事实在指定日期有可追溯来源，不表示法律永不变化或产品已经具备相应能力。
@@ -38,6 +40,7 @@ Manbo 不替官方机构调查或认定，不提供法律意见、心理治疗�
 | [`docs/superpowers/specs/2026-08-31-safe-documentation-governance-design.md`](docs/superpowers/specs/2026-08-31-safe-documentation-governance-design.md) | 本次文档与治理设计规格 |
 | [`knowledge-base/`](knowledge-base/) | 供未来 agent 使用的定义、法律、执法、判断、渠道和沟通资料 |
 | [`knowledge-base/AGENT-GUIDE.md`](knowledge-base/AGENT-GUIDE.md) | 检索、引用、危机处理、拒答和数据边界 |
+| [`prototype/index.html`](prototype/index.html) | ChatGPT 类 AI-Native 举报档案工作台视觉原型 |
 
 ## 知识库分层
 
@@ -54,7 +57,7 @@ Manbo 不替官方机构调查或认定，不提供法律意见、心理治疗�
 
 ## 安全优先的路线
 
-MVP 只规划法域确认、结构化自述、ILO 指标矩阵、证据安全提示、官方链接和短期文本导出。原始证据托管、跨用户查重、公开公司页、地图和 B2B API 都是后置能力，分别受 DPIA、威胁建模、内容审核、通知-行动、申诉和数据许可门禁约束。详见 [`docs/release-gates.md`](docs/release-gates.md)。
+已确认的方案 A 以 ChatGPT 类对话为入口，配套模块化单体、独立媒体处理流水线、加密对象存储和供应商中立 AI Gateway。首发范围规划法域确认、结构化自述、ILO 指标矩阵、长期私密材料、AI 第一次初审、双模式语音、管理员审核和用户主动导出；单文件上限 100 MB、单案件上限 2 GB，用户主动删除前无默认到期时间。跨用户聚合、公开公司页、地图和 B2B API 仍为后置能力，分别受 DPIA、威胁建模、内容审核、通知-行动、申诉和数据许可门禁约束。详见 [`docs/release-gates.md`](docs/release-gates.md)。
 
 ## 重要声明
 

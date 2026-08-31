@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 构建一个以 AI 对话为主要入口、能够生成可追溯结构化举报档案、定性检查 ILO 指标与证据覆盖、提供法域法律导航并由用户控制保存/导出的 MVP。
+**Goal:** 构建一个以 AI 对话为主要入口、能够生成可追溯结构化举报档案、长期保存用户材料、提供 AI 第一次初审与管理员审核、定性检查 ILO 指标与证据覆盖、提供法域法律导航并由用户控制导出的 MVP。
 
-**Architecture:** 使用 Next.js App Router 作为单体 Web 应用，内部按 `domain`、`ai`、`knowledge`、`connectors` 和 `web` 模块分层。AI 只负责对话编排和结构化提取，所有法律导航必须经过带 `evidence_status`、`last_verified` 和 `source_id` 的知识库检索；业务层禁止数字评分、概率、排名和法律认定。MVP 将结构化档案保存到 PostgreSQL，原始图片/文件、公开页面、跨用户聚类和自动外部提交不进入本计划。
+**Architecture:** 使用 Next.js App Router 作为模块化单体 Web 应用，配套独立媒体处理流水线、加密对象存储和供应商中立 AI Gateway，内部按 `domain`、`media`、`ai`、`knowledge`、`connectors` 和 `web` 模块分层。AI 只负责对话编排、结构化提取和工作流状态，所有法律导航必须经过带 `evidence_status`、`last_verified` 和 `source_id` 的知识库检索；业务层禁止数字评分、概率、排名和法律认定。首发 MVP 保存结构化档案、原始材料及不可变版本，支持管理员低频审核；公开页面、跨用户聚类和自动外部提交不进入本计划。
 
 **Tech Stack:** Node.js 22 LTS、Next.js 16 App Router、React 19、TypeScript strict、PostgreSQL 16、Prisma 6、Zod 4、Ajv 8（JSON Schema）、Vitest 4、Playwright 1.62、pnpm 11。AI 通过 provider-neutral adapter 接入，测试默认使用 deterministic mock provider；MVP 不在核心包中安装任何模型厂商 SDK。
 
@@ -13,12 +13,17 @@
 - AI 是主要用户入口，但不能输出“构成强迫劳动”“已经违法”“举报成功率”等法律或结果性结论。
 - 系统禁止数字化证据分数、概率、排名、星级、颜色等级或报告热度排序。
 - 允许的定性状态为：ILO 指标 `hit | not_hit | insufficient`；证据覆盖 `covered | partial | gap`；法律导航 `possible | needs_review | not_covered`。
-- MVP 只保存结构化举报档案和必要对话消息；不保存原始图片、文件、证件照片、完整 IP 或设备指纹。
+- MVP 保存结构化举报档案、必要对话消息和用户主动上传的加密原始材料；不保存完整 IP 或设备指纹。
+- 方案 A 首发范围允许加密保存原始图片、文件和录音；用户主动删除前无默认到期时间，单文件上限 100 MB、单案件上限 2 GB。
+- 文件、录音、转写文本和用户修订稿分开保存；无法解析的材料可保存但不得进入 AI 判断，危险格式必须隔离且不执行。
+- AI 初审结果固定为 `ready_for_preparation | needs_more_information | out_of_scope | safety_referral`，只表示下一步工作流。
+- 管理员可随时查看并独立标注 `intake_rejected | evidence_incomplete | credibility_concern | demonstrably_false`；系统自动记录访问、播放、下载、标注、修改和删除，用户可查阅访问记录。
+- 支持“语音输入+文字回复”和“实时语音+同步字幕”两种模式；音频原件、转写与编辑稿不可互相覆盖。
 - 法域必须分别记录行为发生地、用户所在地和产品流向地；未确认法域时不得映射具体法条。
 - 暴力、拘禁、自伤、未成年人或人口贩运信号优先进入危机流程，停止常规证据追问。
 - 用户可查看、修改、删除和导出档案；外部系统提交必须逐字段预览并获得独立确认。
 - 法律、渠道和动态清单只从带 `source_id`、`last_verified`、`evidence_status` 的知识库检索；`needs-review` 不得触发确定性法律表述。
-- 公开公司页、地图、跨用户事件关联、原始证据托管和 B2B API 不在 MVP 中。
+- 公开公司页、地图、跨用户事件关联和 B2B API 不在 MVP 中；原始证据托管属于方案 A 首发能力，但受独立媒体安全门禁约束。
 - 对话原文发送给模型前必须先做本地 PII 提示/脱敏；模型厂商、模型 ID、留存策略和区域必须由部署配置提供，不得写死在领域层。
 - 所有时间戳使用 UTC ISO 8601，日期型知识元数据使用 `YYYY-MM-DD`；所有公开 API 对象都经过 Zod `.strict()` 校验。
 - 用户界面目标为 WCAG 2.2 AA；键盘操作、焦点顺序、错误提示和危机退出属于发布阻断项。
@@ -72,6 +77,23 @@
 - Modify: `README.md`, `docs/research-and-plan.md`, `docs/release-gates.md`
 
 ## WBS 与实施任务
+
+## 方案 A 增量 WBS（覆盖旧计划中与原始材料冲突的步骤）
+
+| WBS | 目标 | 关键交付物 | 验收标准 |
+|-----|------|------------|----------|
+| A1 基础应用与契约 | 建立模块化单体、严格类型与版本化协议 | Next.js、PostgreSQL、Prisma、Zod/Ajv、`AiInputEnvelope`/`AiOutputEnvelope` | 所有公开输入输出 strict 校验；禁止评分/概率/排名字段 |
+| A2 加密媒体存储 | 长期保存原始文件、录音和版本 | S3 兼容对象存储、信封加密、100 MB/2 GB 配额、完整性哈希 | 原件不可变；用户主动删除前无默认到期；超限原子拒绝 |
+| A3 文件安全与解析 | 安全接收几乎所有格式 | MIME/签名校验、隔离扫描、OCR/转写/抽取适配器、解析状态机 | 无法解析标记“已保存、尚未读取”；危险格式永不执行、不进入 AI |
+| A4 双模式语音 | 兼顾低频语音输入与实时对话 | 录音/转写/编辑/重录；双向音频/字幕/打断/文本切换 | 音频、转写和编辑稿独立版本；断线可恢复 |
+| A5 AI Gateway | 实现供应商中立、可降级的 AI | 本地危机预检、PII 提示、来源追溯、双重 schema 校验 | 校验失败不生成正式初审；模型故障回退静态安全资源 |
+| A6 案件与初审版本 | 支持持续补充与反复初审 | Case/Material/Transcript/ReviewVersion 模型 | 新材料不覆盖历史；四个 AI 状态只驱动工作流 |
+| A7 用户工作台 | 达到 ChatGPT 类使用体验 | 连续消息流、流式/停止/重试/编辑重发、上传和初审卡片 | 桌面/移动可用；WCAG 2.2 AA；不展示结果性结论 |
+| A8 管理员工作台 | 支持默认低频人工审核 | 随时查看、材料播放/下载、四类管理员标注、申诉 | 管理意见独立保存；操作自动审计；用户可查看访问记录 |
+| A9 导出与未来连接器 | 用户控制材料准备与后续接入 | 字段预览、独立同意、Markdown/JSON/PDF、Connector 接口 | 无可验证回执不显示 received；聚合必须明确加入 |
+| A10 生命周期与发布 | 证明删除、备份、审计和恢复可靠 | 删除回执、备份清理、密钥轮换、E2E、可及性与红队报告 | Gate 0/1/2 对应证据齐全，高危失败可回滚 |
+
+执行顺序为 A1 → A2/A3 → A4/A5 → A6 → A7/A8 → A9 → A10；每个 WBS 仍按本计划的 TDD 步骤实施和独立审查。
 
 ### Task 1: 建立应用骨架与质量门槛
 
@@ -1092,9 +1114,10 @@ export interface AuditEvent {
 - [ ] **Step 1: Write privacy control tests**
 
 ```ts
-it("does not persist raw uploaded file content", async () => {
-  const response = await request.post("/api/cases").send({ filename: "passport.jpg", bytes: "..." });
-  expect(response.status).toBe(415);
+it("quarantines dangerous uploads before parsing", async () => {
+  const response = await request.post("/api/cases/case-a/materials").send({ filename: "macro.docm", bytes: "..." });
+  expect(response.status).toBe(202);
+  expect(response.body.processingState).toBe("quarantined");
 });
 
 it("deletion receipt lists primary and queued cleanup targets", async () => {
@@ -1134,7 +1157,7 @@ pnpm db:test:down
 Remove-Item Env:DATABASE_URL
 ```
 
-Expected: PASS; raw-file request returns HTTP 415, deletion receipt names all five cleanup targets, deleted reads remain empty after retries, and `pnpm audit` reports no high-severity issue. Any exception must be recorded with owner, expiry date, and mitigation in `docs/risk-register.md` before release.
+Expected: PASS; dangerous-file request returns HTTP 202 with `quarantined`, deletion receipt names all five cleanup targets, deleted reads remain empty after retries, and `pnpm audit` reports no high-severity issue. Any exception must be recorded with owner, expiry date, and mitigation in `docs/risk-register.md` before release.
 
 - [ ] **Step 7: Commit**
 
@@ -1145,7 +1168,7 @@ git commit -m "feat: enforce privacy and failure controls"
 
 **Acceptance Criteria:**
 
-- Raw files are rejected by MVP APIs and never reach persistence.
+- Raw files are encrypted before persistence; dangerous files are quarantined and never executed or parsed.
 - Deletion has a verifiable receipt and asynchronous cleanup path.
 - Audit records contain actions and timestamps but no raw sensitive content or device identifiers.
 - AI/knowledge failures degrade safely without false status claims.
@@ -1251,4 +1274,4 @@ git commit -m "test: establish MVP release evidence"
 
 ## Explicit Non-Deliverables
 
-本计划不交付：原始证据文件上传或托管、公司公开页面、地图、报告数量排名、跨用户事件聚类、自动向 CBP/BAFA/劳动监察机构提交、法律认定、营救或任何真实用户数据迁移。上述能力必须另立设计规格并通过对应发布门禁。
+本计划不交付：公司公开页面、地图、报告数量排名、跨用户事件聚类、自动向 CBP/BAFA/劳动监察机构提交、法律认定、营救或任何真实用户数据迁移。原始材料托管、双模式语音和管理员审核属于方案 A 首发能力，但必须通过媒体隔离、加密、删除/备份演练和审计门禁后才能启用。
