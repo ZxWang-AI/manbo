@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>慢波 Manbo · AI-Native 举报档案工作台</title>
+  <meta name="description" content="慢波 Manbo AI-Native 举报档案工作台原型" />
+  <style>
+    :root {
+      --ink: #e9f0ef;
+      --muted: #92a6a5;
+      --dim: #6c8080;
+      --line: rgba(177, 214, 208, .14);
+      --panel: rgba(22, 39, 41, .82);
+      --panel-strong: #18282a;
+      --canvas: #091416;
+      --accent: #b9f36b;
+      --accent-ink: #10200f;
+      --warning: #f2c879;
+      --blue: #95c9ff;
+      --radius: 18px;
+      font-family: "Noto Sans SC", "Source Han Sans SC", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--canvas); min-height: 100vh; }
+    body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .45;
+      background: radial-gradient(circle at 14% 0%, rgba(112, 191, 181, .18), transparent 36%),
+                  radial-gradient(circle at 100% 100%, rgba(93, 147, 218, .12), transparent 34%); }
+    button, textarea, input { font: inherit; }
+    button { cursor: pointer; }
+    .shell { position: relative; display: grid; grid-template-columns: 272px minmax(520px, 1fr) 312px; min-height: 100vh; }
+    .sidebar, .inspector { background: rgba(8, 21, 23, .78); backdrop-filter: blur(18px); }
+    .sidebar { border-right: 1px solid var(--line); padding: 26px 18px; display: flex; flex-direction: column; gap: 26px; }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 0 10px; }
+    .brand-mark { width: 30px; height: 30px; border-radius: 50% 50% 50% 10%; background: var(--accent); transform: rotate(-18deg); position: relative; }
+    .brand-mark::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--canvas); position: absolute; inset: 9px; }
+    .brand-name { font-size: 17px; letter-spacing: .12em; font-weight: 700; }
+    .brand-note { font-size: 11px; color: var(--dim); margin-left: auto; }
+    .new-case { border: 1px solid rgba(185,243,107,.5); background: rgba(185,243,107,.07); color: var(--accent); border-radius: 12px; padding: 12px 13px; text-align: left; display: flex; align-items: center; gap: 10px; }
+    .new-case:hover { background: rgba(185,243,107,.14); }
+    .plus { font-size: 20px; line-height: 1; }
+    .section-label { color: var(--dim); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; padding: 0 10px; }
+    .case-list { display: grid; gap: 6px; }
+    .case { border: 0; color: var(--ink); background: transparent; border-radius: 11px; text-align: left; padding: 11px 10px; display: grid; gap: 4px; }
+    .case:hover, .case.active { background: rgba(164, 205, 198, .1); }
+    .case-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .case-time { color: var(--dim); font-size: 11px; }
+    .sidebar-foot { margin-top: auto; border-top: 1px solid var(--line); padding: 18px 10px 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .main { display: flex; flex-direction: column; min-width: 0; }
+    .topbar { height: 74px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 0 34px; }
+    .crumb { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    .crumb strong { color: var(--ink); font-weight: 600; }
+    .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 13px rgba(185,243,107,.85); }
+    .conversation { width: min(820px, calc(100% - 64px)); margin: 0 auto; padding: 56px 0 190px; }
+    .eyebrow { color: var(--accent); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { font-size: clamp(30px, 4vw, 52px); line-height: 1.08; margin: 13px 0 14px; letter-spacing: -.04em; font-weight: 620; }
+    .lede { max-width: 600px; margin: 0; color: var(--muted); font-size: 15px; line-height: 1.75; }
+    .notice { margin-top: 28px; padding: 13px 16px; border-left: 2px solid var(--accent); background: rgba(185,243,107,.055); color: #c4d5d2; font-size: 12px; line-height: 1.6; }
+    .messages { display: grid; gap: 18px; margin-top: 44px; }
+    .message { display: flex; gap: 13px; align-items: flex-start; animation: rise .4s ease both; }
+    .avatar { flex: 0 0 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+    .avatar.ai { background: var(--accent); color: var(--accent-ink); }
+    .avatar.user { background: #30494b; color: var(--ink); }
+    .bubble { max-width: 720px; color: #d5e3e0; font-size: 14px; line-height: 1.75; }
+    .bubble.user-bubble { color: var(--ink); background: rgba(61, 85, 87, .38); border: 1px solid rgba(162, 197, 191, .14); border-radius: 14px; padding: 10px 14px; }
+    .bubble p { margin: 0 0 9px; } .bubble p:last-child { margin-bottom: 0; }
+    .review-card { margin-top: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+    .review-head { display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--line); padding: 16px 18px; }
+    .review-title { font-size: 13px; font-weight: 650; } .review-meta { font-size: 11px; color: var(--muted); }
+    .review-body { padding: 16px 18px; display: grid; gap: 14px; }
+    .review-row { display: grid; grid-template-columns: 128px 1fr; gap: 14px; align-items: start; }
+    .review-key { color: var(--muted); font-size: 12px; } .review-value { font-size: 12px; line-height: 1.6; }
+    .tag { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 99px; background: rgba(242,200,121,.12); color: var(--warning); font-size: 11px; }
+    .tag.blue { background: rgba(149,201,255,.1); color: var(--blue); }
+    .composer-wrap { position: fixed; z-index: 3; left: 272px; right: 312px; bottom: 0; padding: 18px 34px 24px; background: linear-gradient(transparent, rgba(9,20,22,.96) 28%); }
+    .composer { width: min(820px, 100%); margin: 0 auto; border: 1px solid rgba(171, 216, 207, .26); border-radius: 16px; background: rgba(22, 39, 41, .95); box-shadow: 0 16px 45px rgba(0,0,0,.32); padding: 10px 12px 10px 16px; display: flex; gap: 10px; align-items: flex-end; }
+    textarea { min-height: 42px; max-height: 120px; resize: none; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); line-height: 1.55; padding: 9px 0; }
+    textarea::placeholder { color: #718786; }
+    .composer-actions { display:flex; align-items:center; gap:7px; }
+    .icon-btn { width: 35px; height: 35px; border: 1px solid var(--line); color: var(--muted); background: transparent; border-radius: 10px; }
+    .icon-btn:hover { color: var(--ink); background: rgba(164,205,198,.08); }
+    .send { width: 37px; height: 37px; border: 0; border-radius: 11px; background: var(--accent); color: var(--accent-ink); font-weight: 800; }
+    .inspector { border-left: 1px solid var(--line); padding: 28px 22px; }
+    .inspector h2 { font-size: 13px; margin: 0; letter-spacing: .04em; }
+    .inspector-sub { margin: 8px 0 24px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .panel { border-top: 1px solid var(--line); padding: 18px 0; }
+    .panel-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 13px; }
+    .panel-label { font-size: 11px; color: var(--muted); letter-spacing: .09em; text-transform: uppercase; }
+    .panel-link { border: 0; background: transparent; color: var(--accent); font-size: 11px; padding: 0; }
+    .coverage { display:grid; gap: 11px; }
+    .coverage-item { display:grid; grid-template-columns: 8px 1fr auto; gap: 9px; align-items: center; font-size: 12px; }
+    .bar-dot { width: 7px; height: 7px; border-radius: 2px; background: var(--accent); } .bar-dot.partial { background: var(--warning); }
+    .coverage-state { color: var(--muted); font-size: 10px; }
+    .file-drop { border: 1px dashed rgba(171,216,207,.3); border-radius: 13px; padding: 16px 13px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .file-drop strong { color: var(--ink); display:block; margin-bottom: 4px; font-size: 12px; }
+    .file-drop button { margin-top: 11px; border: 0; color: var(--accent); background: transparent; padding: 0; font-size: 11px; }
+    .admin { display:flex; align-items:center; gap: 9px; color: var(--muted); font-size: 11px; }
+    .admin::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--blue); }
+    .toast { position: fixed; right: 24px; bottom: 24px; background: #d5e3e0; color: #152426; border-radius: 10px; padding: 10px 14px; font-size: 12px; opacity: 0; transform: translateY(10px); pointer-events:none; transition: .25s; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @media (max-width: 1040px) { .shell { grid-template-columns: 224px minmax(0, 1fr); } .inspector { display:none; } .composer-wrap { left: 224px; right: 0; } }
+    @media (max-width: 680px) { .shell { display:block; } .sidebar { display:none; } .topbar { padding: 0 18px; } .conversation { width: calc(100% - 36px); padding-top: 34px; } h1 { font-size: 34px; } .composer-wrap { left: 0; padding: 12px 12px 14px; } .notice { font-size: 11px; } .review-row { grid-template-columns: 1fr; gap: 4px; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" aria-label="案件导航">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">慢波 MANBO</span><span class="brand-note">原型</span></div>
+      <button class="new-case" id="newCase"><span class="plus">＋</span><span>新建举报档案</span></button>
+      <div class="section-label">我的档案</div>
+      <nav class="case-list">
+        <button class="case active"><span class="case-title">深圳 · 电子装配线</span><span class="case-time">刚刚更新</span></button>
+        <button class="case"><span class="case-title">待补充的时间线</span><span class="case-time">2026 年 8 月 28 日</span></button>
+        <button class="case"><span class="case-title">初次了解 · 记录</span><span class="case-time">2026 年 8 月 20 日</span></button>
+      </nav>
+      <div class="sidebar-foot">AI 只做第一次信息整理。你可以一直保留档案、补充材料或删除它。<br><br>长期保存 · 用户与管理员可查看 · 默认不公开</div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div class="crumb"><span>我的档案</span><span>›</span><strong>深圳 · 电子装配线</strong></div><div class="status"><span class="status-dot"></span>安全模式已开启</div></header>
+      <section class="conversation" aria-live="polite">
+        <div class="eyebrow">AI-NATIVE CASE NAVIGATOR</div>
+        <h1>把叙述变成<br>可核对的档案。</h1>
+        <p class="lede">从你愿意分享的片段开始。慢波会帮你整理时间线、对应 ILO 指标、标出信息缺口，并把下一步选择交还给你。</p>
+        <div class="notice">这不是法律认定，也不是对事实真伪的判断。任何时候都可以暂停、修改、补充或删除。</div>
+        <div class="messages" id="messages">
+          <div class="message"><div class="avatar ai">AI</div><div class="bubble"><p>你好，我会先听你想说的内容，不要求你一次讲完整。</p><p>你可以从“发生了什么”“大概什么时候”“谁要求你做什么”中的任何一项开始。若你正面临即时危险，请先联系当地紧急服务。</p></div></div>
+          <div class="message"><div class="avatar user">我</div><div class="bubble user-bubble">我在一家电子厂工作，最近几个月经常被要求留下来加班。</div></div>
+          <div class="message"><div class="avatar ai">AI</div><div class="bubble"><p>我先记录为一条待确认的事实，不把它当作结论：</p>
+            <div class="review-card"><div class="review-head"><span class="review-title">我目前理解的是……</span><span class="review-meta">可编辑 · 版本 03</span></div><div class="review-body"><div class="review-row"><span class="review-key">工作关系</span><span class="review-value">你在一家电子厂工作（来源：你的原话）</span></div><div class="review-row"><span class="review-key">时间线</span><span class="review-value">最近几个月 · 经常被要求留下加班 <span class="tag">信息不足</span></span></div><div class="review-row"><span class="review-key">下一步</span><span class="review-value">如果安全，你可以补充：是谁提出要求、拒绝后会发生什么、是否有工资或排班记录。</span></div></div></div>
+          </div></div>
+        </div>
+      </section>
+      <div class="composer-wrap"><form class="composer" id="composer"><button class="icon-btn" id="attachButton" type="button" aria-label="添加材料">＋</button><textarea id="messageInput" rows="1" placeholder="描述你经历的事情，或补充一份材料…" aria-label="消息"></textarea><div class="composer-actions"><button class="icon-btn" type="button" aria-label="录音">◉</button><button class="send" type="submit" aria-label="发送">↑</button></div><input id="fileInput" type="file" hidden multiple /></form></div>
+    </main>
+    <aside class="inspector" aria-label="档案状态">
+      <h2>档案状态</h2><p class="inspector-sub">AI 初审结果只决定下一步工作流，不代表事实成立或法律结论。</p>
+      <div class="panel"><div class="panel-head"><span class="panel-label">第一次初审</span><span class="tag">需继续补充</span></div><p class="inspector-sub" style="margin:0">已有一条时间线，仍缺少拒绝后的后果与可安全核对的材料。</p></div>
+      <div class="panel"><div class="panel-head"><span class="panel-label">ILO 指标覆盖</span><button class="panel-link" type="button">查看全部</button></div><div class="coverage"><div class="coverage-item"><i class="bar-dot"></i><span>加班与工作时间</span><span class="coverage-state">部分</span></div><div class="coverage-item"><i class="bar-dot"></i><span>工资与扣留</span><span class="coverage-state">已提供</span></div><div class="coverage-item"><i class="bar-dot partial"></i><span>惩罚或威胁</span><span class="coverage-state">信息不足</span></div></div></div>
+      <div class="panel"><div class="panel-head"><span class="panel-label">材料</span><span class="coverage-state">0 个文件</span></div><div class="file-drop"><strong>拖放材料到这里</strong>支持文档、图片、音频等格式。能读取的内容会标记来源；暂时无法读取的文件仍可保存。<br><button id="chooseFile" type="button">选择文件 · 单文件 100 MB · 单案件 2 GB</button></div></div>
+      <div class="panel"><div class="panel-head"><span class="panel-label">访问权限</span></div><div class="admin">你与管理员均可查看；访问会自动记录</div></div>
+    </aside>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script>
+    const messages = document.getElementById('messages');
+    const input = document.getElementById('messageInput');
+    const composer = document.getElementById('composer');
+    const fileInput = document.getElementById('fileInput');
+    const toast = document.getElementById('toast');
+    const showToast = (text) => { toast.textContent = text; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2600); };
+    const addMessage = (who, text) => { const row = document.createElement('div'); row.className = 'message'; row.innerHTML = `<div class="avatar ${who === '我' ? 'user' : 'ai'}">${who}</div><div class="bubble ${who === '我' ? 'user-bubble' : ''}">${text}</div>`; messages.appendChild(row); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+    composer.addEventListener('submit', (event) => { event.preventDefault(); const value = input.value.trim(); if (!value) return; addMessage('我', value.replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))); input.value = ''; setTimeout(() => addMessage('AI', '<p>已收到。我会把这段内容作为新的材料版本保存，并提示你哪些字段仍待确认。</p><span class="tag blue">版本已追加 · 可继续补充</span>'), 420); });
+    document.getElementById('attachButton').addEventListener('click', () => fileInput.click());
+    document.getElementById('chooseFile').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => { if (fileInput.files.length) showToast(`已选择 ${fileInput.files.length} 个文件，等待安全扫描`); });
+    document.getElementById('newCase').addEventListener('click', () => showToast('已准备新的空白档案')); 
+  </script>
+</body>
+</html>
