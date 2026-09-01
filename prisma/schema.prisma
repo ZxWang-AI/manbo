@@ -106,12 +106,13 @@ model CaseRecord {
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz(3)
 
-  account      Account               @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
-  messages     ConversationMessage[]
-  consents     ConsentEvent[]
-  revisions    CaseRecordRevision[]
-  storageUsage CaseStorageUsage?
-  materials    Material[]
+  account       Account               @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+  messages      ConversationMessage[]
+  consents      ConsentEvent[]
+  revisions     CaseRecordRevision[]
+  storageUsage  CaseStorageUsage?
+  materials     Material[]
+  voiceSessions VoiceSession[]
 
   @@unique([caseId, accountId])
   @@index([accountId, lifecycle])
@@ -238,12 +239,111 @@ model MaterialObjectVersion {
   wrappedKey       String   @map("wrapped_key") @db.Text
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  material Material @relation(fields: [materialId, caseId, accountId], references: [materialId, caseId, accountId], onDelete: Cascade)
+  material    Material            @relation(fields: [materialId, caseId, accountId], references: [materialId, caseId, accountId], onDelete: Cascade)
+  transcripts TranscriptVersion[]
 
   @@unique([materialId, objectVersionId])
+  @@unique([objectVersionId, materialId, caseId, accountId])
   @@index([caseId, accountId])
   @@index([createdAt])
   @@map("material_object_versions")
+}
+
+enum TranscriptKind {
+  machine_transcript
+  user_revision
+  realtime_caption
+}
+
+enum VoiceSessionStatus {
+  active
+  ended
+}
+
+enum RealtimeVoiceEventType {
+  session_started
+  user_caption
+  assistant_caption
+  assistant_interrupted
+  muted
+  unmuted
+  switched_to_text
+  session_ended
+}
+
+model TranscriptVersion {
+  transcriptVersionId       String         @id @map("transcript_version_id") @db.Uuid
+  sourceAudioVersionId      String         @map("source_audio_version_id") @db.Uuid
+  materialId                String         @map("material_id") @db.Uuid
+  caseId                    String         @map("case_id") @db.Uuid
+  accountId                 String         @map("account_id") @db.Char(32)
+  parentTranscriptVersionId String?        @map("parent_transcript_version_id") @db.Uuid
+  kind                      TranscriptKind
+  text                      String         @db.Text
+  locale                    String         @db.VarChar(35)
+  segments                  Json
+  createdAt                 DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  sourceAudio  MaterialObjectVersion   @relation(fields: [sourceAudioVersionId, materialId, caseId, accountId], references: [objectVersionId, materialId, caseId, accountId], onDelete: Cascade)
+  parent       TranscriptVersion?      @relation("TranscriptRevision", fields: [parentTranscriptVersionId], references: [transcriptVersionId], onDelete: Cascade)
+  children     TranscriptVersion[]     @relation("TranscriptRevision")
+  confirmation TranscriptConfirmation?
+
+  @@index([caseId, accountId])
+  @@index([sourceAudioVersionId])
+  @@index([createdAt])
+  @@map("transcript_versions")
+}
+
+model TranscriptConfirmation {
+  confirmationId      String   @id @map("confirmation_id") @db.Uuid
+  transcriptVersionId String   @unique @map("transcript_version_id") @db.Uuid
+  accountId           String   @map("account_id") @db.Char(32)
+  caseId              String   @map("case_id") @db.Uuid
+  confirmedAt         DateTime @map("confirmed_at") @db.Timestamptz(3)
+
+  transcript TranscriptVersion @relation(fields: [transcriptVersionId], references: [transcriptVersionId], onDelete: Cascade)
+
+  @@index([caseId, accountId])
+  @@map("transcript_confirmations")
+}
+
+model VoiceSession {
+  sessionId    String             @id @map("session_id") @db.Uuid
+  accountId    String             @map("account_id") @db.Char(32)
+  caseId       String             @map("case_id") @db.Uuid
+  locale       String             @db.VarChar(35)
+  status       VoiceSessionStatus @default(active)
+  nextSequence Int                @default(1) @map("next_sequence")
+  muted        Boolean            @default(false)
+  textMode     Boolean            @default(false) @map("text_mode")
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  endedAt      DateTime?          @map("ended_at") @db.Timestamptz(3)
+
+  case   CaseRecord           @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+  events RealtimeVoiceEvent[]
+
+  @@unique([sessionId, caseId, accountId])
+  @@index([caseId, accountId, status])
+  @@map("voice_sessions")
+}
+
+model RealtimeVoiceEvent {
+  eventId   String                 @id @map("event_id") @db.Uuid
+  sessionId String                 @map("session_id") @db.Uuid
+  accountId String                 @map("account_id") @db.Char(32)
+  caseId    String                 @map("case_id") @db.Uuid
+  sequence  Int
+  type      RealtimeVoiceEventType
+  text      String?                @db.Text
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  session VoiceSession @relation(fields: [sessionId, caseId, accountId], references: [sessionId, caseId, accountId], onDelete: Cascade)
+
+  @@unique([sessionId, sequence])
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("realtime_voice_events")
 }
 
 model MaterialUploadReservation {
