@@ -29,7 +29,12 @@ describe("envelope encryption", () => {
       wrapper,
       () => Buffer.alloc(32, 8),
     );
-    const tampered = { ...encrypted, ciphertext: `${encrypted.ciphertext.slice(0, -2)}aa` };
+    const tamperedCiphertext = Buffer.from(encrypted.ciphertext, "base64url");
+    tamperedCiphertext[0] = tamperedCiphertext[0]! ^ 0xff;
+    const tampered = {
+      ...encrypted,
+      ciphertext: tamperedCiphertext.toString("base64url"),
+    };
 
     await expect(decryptEnvelope(tampered, wrapper)).rejects.toThrow();
   });
