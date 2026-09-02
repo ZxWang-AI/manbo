@@ -1,0 +1,428 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CaseVisibility {
+  private
+}
+
+enum CaseLifecycle {
+  draft
+  confirmed
+  exported
+  deleted
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+}
+
+enum AuditAction {
+  create
+  update
+  export
+  delete
+  consent_change
+}
+
+enum CleanupStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+model Account {
+  accountId          String   @id @map("account_id") @db.Char(32)
+  alias              String   @unique @db.VarChar(80)
+  aliasHash          String   @unique @map("alias_hash") @db.Char(64)
+  recoverySecretHash String   @map("recovery_secret_hash") @db.Text
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  cases       CaseRecord[]
+  sessions    AuthSession[]
+  auditEvents AuditEvent[]
+  cleanupJobs CleanupJob[]
+
+  @@index([createdAt])
+  @@map("accounts")
+}
+
+model AuthSession {
+  sessionIdHash     String    @id @map("session_id_hash") @db.Char(64)
+  accountId         String    @map("account_id") @db.Char(32)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt        DateTime  @map("last_seen_at") @db.Timestamptz(3)
+  idleExpiresAt     DateTime  @map("idle_expires_at") @db.Timestamptz(3)
+  absoluteExpiresAt DateTime  @map("absolute_expires_at") @db.Timestamptz(3)
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  account Account @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
+
+  @@index([idleExpiresAt])
+  @@index([absoluteExpiresAt])
+  @@map("auth_sessions")
+}
+
+model RecoveryThrottle {
+  aliasHash       String    @id @map("alias_hash") @db.Char(64)
+  failedCount     Int       @default(0) @map("failed_count")
+  windowStartedAt DateTime  @map("window_started_at") @db.Timestamptz(3)
+  blockedUntil    DateTime? @map("blocked_until") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([blockedUntil])
+  @@map("recovery_throttles")
+}
+
+model CaseRecord {
+  caseId           String         @id @map("case_id") @db.Uuid
+  accountId        String         @map("account_id") @db.Char(32)
+  schemaVersion    String         @map("schema_version") @db.VarChar(16)
+  visibility       CaseVisibility @default(private)
+  lifecycle        CaseLifecycle  @default(draft)
+  version          Int            @default(1)
+  jurisdiction     Json
+  facts            Json
+  timeline         Json
+  iloIndicators    Json           @map("ilo_indicators")
+  elements         Json
+  evidenceCoverage Json           @map("evidence_coverage")
+  legalNavigation  Json           @map("legal_navigation")
+  referrals        Json
+  safetyFlags      Json           @map("safety_flags")
+  sourceTrace      Json           @map("source_trace")
+  consent          Json
+  aiReviewStatus   String?        @map("ai_review_status") @db.VarChar(40)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz(3)
+
+  account       Account               @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+  messages      ConversationMessage[]
+  consents      ConsentEvent[]
+  revisions     CaseRecordRevision[]
+  storageUsage  CaseStorageUsage?
+  materials     Material[]
+  voiceSessions VoiceSession[]
+
+  @@unique([caseId, accountId])
+  @@index([accountId, lifecycle])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@map("case_records")
+}
+
+model CaseRecordRevision {
+  revisionId String   @id @map("revision_id") @db.Uuid
+  caseId     String   @map("case_id") @db.Uuid
+  accountId  String   @map("account_id") @db.Char(32)
+  version    Int
+  snapshot   Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  case CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+
+  @@unique([caseId, version])
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("case_record_revisions")
+}
+
+enum MaterialStatus {
+  reserved
+  uploaded
+  deleted
+}
+
+enum MaterialProcessingState {
+  uploading
+  quarantined
+  scanning
+  saved_unread
+  parse_queued
+  parsed
+  blocked_malicious
+  scan_failed
+}
+
+enum MaterialSignatureStatus {
+  match
+  mismatch
+  unknown
+}
+
+model CaseStorageUsage {
+  caseId        String   @id @map("case_id") @db.Uuid
+  accountId     String   @map("account_id") @db.Char(32)
+  usedBytes     BigInt   @default(0) @map("used_bytes")
+  reservedBytes BigInt   @default(0) @map("reserved_bytes")
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  case CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+
+  @@unique([caseId, accountId])
+  @@index([accountId])
+  @@map("case_storage_usage")
+}
+
+model Material {
+  materialId        String                  @id @map("material_id") @db.Uuid
+  caseId            String                  @map("case_id") @db.Uuid
+  accountId         String                  @map("account_id") @db.Char(32)
+  status            MaterialStatus          @default(reserved)
+  declaredBytes     BigInt                  @map("declared_bytes")
+  usedBytes         BigInt?                 @map("used_bytes")
+  objectKey         String?                 @map("object_key") @db.VarChar(180)
+  sha256            String?                 @db.Char(64)
+  encryptionScheme  String?                 @map("encryption_scheme") @db.VarChar(32)
+  keyVersion        String?                 @map("key_version") @db.VarChar(80)
+  wrappedKey        String?                 @map("wrapped_key") @db.Text
+  originalFilename  String?                 @map("original_filename") @db.VarChar(255)
+  declaredMime      String?                 @map("declared_mime") @db.VarChar(160)
+  detectedMime      String?                 @map("detected_mime") @db.VarChar(160)
+  signatureStatus   MaterialSignatureStatus @default(unknown) @map("signature_status")
+  processingState   MaterialProcessingState @default(quarantined) @map("processing_state")
+  processingVersion Int                     @default(1) @map("processing_version")
+  eligibleForAi     Boolean                 @default(false) @map("eligible_for_ai")
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  completedAt       DateTime?               @map("completed_at") @db.Timestamptz(3)
+  deletedAt         DateTime?               @map("deleted_at") @db.Timestamptz(3)
+
+  case           CaseRecord              @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+  objectVersions MaterialObjectVersion[]
+  derivatives    MaterialDerivative[]
+
+  @@unique([materialId, caseId, accountId])
+  @@index([caseId, accountId, status])
+  @@map("materials")
+}
+
+model MaterialDerivative {
+  derivativeId    String   @id @map("derivative_id") @db.Uuid
+  materialId      String   @map("material_id") @db.Uuid
+  caseId          String   @map("case_id") @db.Uuid
+  accountId       String   @map("account_id") @db.Char(32)
+  contentRef      String   @map("content_ref") @db.VarChar(180)
+  parserId        String   @map("parser_id") @db.VarChar(80)
+  parserVersion   String   @map("parser_version") @db.VarChar(40)
+  sourceObjectKey String   @map("source_object_key") @db.VarChar(180)
+  sourceSha256    String   @map("source_sha256") @db.Char(64)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  material Material @relation(fields: [materialId, caseId, accountId], references: [materialId, caseId, accountId], onDelete: Cascade)
+
+  @@unique([materialId, contentRef])
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("material_derivatives")
+}
+
+model MaterialObjectVersion {
+  objectVersionId  String   @id @map("object_version_id") @db.Uuid
+  materialId       String   @map("material_id") @db.Uuid
+  caseId           String   @map("case_id") @db.Uuid
+  accountId        String   @map("account_id") @db.Char(32)
+  objectKey        String   @map("object_key") @db.VarChar(180)
+  storedBytes      BigInt   @map("stored_bytes")
+  sha256           String   @db.Char(64)
+  encryptionScheme String   @map("encryption_scheme") @db.VarChar(32)
+  keyVersion       String   @map("key_version") @db.VarChar(80)
+  wrappedKey       String   @map("wrapped_key") @db.Text
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  material    Material            @relation(fields: [materialId, caseId, accountId], references: [materialId, caseId, accountId], onDelete: Cascade)
+  transcripts TranscriptVersion[]
+
+  @@unique([materialId, objectVersionId])
+  @@unique([objectVersionId, materialId, caseId, accountId])
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("material_object_versions")
+}
+
+enum TranscriptKind {
+  machine_transcript
+  user_revision
+  realtime_caption
+}
+
+enum VoiceSessionStatus {
+  active
+  ended
+}
+
+enum RealtimeVoiceEventType {
+  session_started
+  user_caption
+  assistant_caption
+  assistant_interrupted
+  muted
+  unmuted
+  switched_to_text
+  session_ended
+}
+
+model TranscriptVersion {
+  transcriptVersionId       String         @id @map("transcript_version_id") @db.Uuid
+  sourceAudioVersionId      String         @map("source_audio_version_id") @db.Uuid
+  materialId                String         @map("material_id") @db.Uuid
+  caseId                    String         @map("case_id") @db.Uuid
+  accountId                 String         @map("account_id") @db.Char(32)
+  parentTranscriptVersionId String?        @map("parent_transcript_version_id") @db.Uuid
+  kind                      TranscriptKind
+  text                      String         @db.Text
+  locale                    String         @db.VarChar(35)
+  segments                  Json
+  createdAt                 DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  sourceAudio  MaterialObjectVersion   @relation(fields: [sourceAudioVersionId, materialId, caseId, accountId], references: [objectVersionId, materialId, caseId, accountId], onDelete: Cascade)
+  parent       TranscriptVersion?      @relation("TranscriptRevision", fields: [parentTranscriptVersionId], references: [transcriptVersionId], onDelete: Cascade)
+  children     TranscriptVersion[]     @relation("TranscriptRevision")
+  confirmation TranscriptConfirmation?
+
+  @@index([caseId, accountId])
+  @@index([sourceAudioVersionId])
+  @@index([createdAt])
+  @@map("transcript_versions")
+}
+
+model TranscriptConfirmation {
+  confirmationId      String   @id @map("confirmation_id") @db.Uuid
+  transcriptVersionId String   @unique @map("transcript_version_id") @db.Uuid
+  accountId           String   @map("account_id") @db.Char(32)
+  caseId              String   @map("case_id") @db.Uuid
+  confirmedAt         DateTime @map("confirmed_at") @db.Timestamptz(3)
+
+  transcript TranscriptVersion @relation(fields: [transcriptVersionId], references: [transcriptVersionId], onDelete: Cascade)
+
+  @@index([caseId, accountId])
+  @@map("transcript_confirmations")
+}
+
+model VoiceSession {
+  sessionId    String             @id @map("session_id") @db.Uuid
+  accountId    String             @map("account_id") @db.Char(32)
+  caseId       String             @map("case_id") @db.Uuid
+  locale       String             @db.VarChar(35)
+  status       VoiceSessionStatus @default(active)
+  nextSequence Int                @default(1) @map("next_sequence")
+  muted        Boolean            @default(false)
+  textMode     Boolean            @default(false) @map("text_mode")
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  endedAt      DateTime?          @map("ended_at") @db.Timestamptz(3)
+
+  case   CaseRecord           @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+  events RealtimeVoiceEvent[]
+
+  @@unique([sessionId, caseId, accountId])
+  @@index([caseId, accountId, status])
+  @@map("voice_sessions")
+}
+
+model RealtimeVoiceEvent {
+  eventId   String                 @id @map("event_id") @db.Uuid
+  sessionId String                 @map("session_id") @db.Uuid
+  accountId String                 @map("account_id") @db.Char(32)
+  caseId    String                 @map("case_id") @db.Uuid
+  sequence  Int
+  type      RealtimeVoiceEventType
+  text      String?                @db.Text
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  session VoiceSession @relation(fields: [sessionId, caseId, accountId], references: [sessionId, caseId, accountId], onDelete: Cascade)
+
+  @@unique([sessionId, sequence])
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("realtime_voice_events")
+}
+
+model MaterialUploadReservation {
+  uploadId         String         @id @map("upload_id") @db.Uuid
+  materialId       String         @map("material_id") @db.Uuid
+  caseId           String         @map("case_id") @db.Uuid
+  accountId        String         @map("account_id") @db.Char(32)
+  declaredBytes    BigInt         @map("declared_bytes")
+  status           MaterialStatus @default(reserved)
+  expiresAt        DateTime       @map("expires_at") @db.Timestamptz(3)
+  encryptionScheme String?        @map("encryption_scheme") @db.VarChar(32)
+  keyVersion       String?        @map("key_version") @db.VarChar(80)
+  wrappedKey       String?        @map("wrapped_key") @db.Text
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([caseId, accountId, status])
+  @@index([expiresAt])
+  @@map("material_upload_reservations")
+}
+
+model ConversationMessage {
+  messageId String      @id @map("message_id") @db.Uuid
+  caseId    String      @map("case_id") @db.Uuid
+  accountId String      @map("account_id") @db.Char(32)
+  role      MessageRole
+  content   String      @db.Text
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  case CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("conversation_messages")
+}
+
+model ConsentEvent {
+  consentEventId String   @id @map("consent_event_id") @db.Uuid
+  caseId         String   @map("case_id") @db.Uuid
+  accountId      String   @map("account_id") @db.Char(32)
+  consentVersion String   @map("consent_version") @db.VarChar(64)
+  snapshot       Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  case CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+
+  @@index([caseId, accountId])
+  @@index([createdAt])
+  @@map("consent_events")
+}
+
+model AuditEvent {
+  auditEventId String      @id @map("audit_event_id") @db.Uuid
+  accountId    String      @map("account_id") @db.Char(32)
+  caseId       String?     @map("case_id") @db.Uuid
+  action       AuditAction
+  metadata     Json
+  occurredAt   DateTime    @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  account Account @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+
+  @@index([occurredAt])
+  @@map("audit_events")
+}
+
+model CleanupJob {
+  cleanupJobId String        @id @map("cleanup_job_id") @db.Uuid
+  accountId    String        @map("account_id") @db.Char(32)
+  caseId       String?       @map("case_id") @db.Uuid
+  target       String        @db.VarChar(64)
+  status       CleanupStatus @default(pending)
+  attempts     Int           @default(0)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  completedAt  DateTime?     @map("completed_at") @db.Timestamptz(3)
+
+  account Account @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("cleanup_jobs")
+}

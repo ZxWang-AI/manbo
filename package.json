@@ -1,0 +1,50 @@
+{
+  "name": "manbo",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=22.14.0 <23",
+    "pnpm": "11.24.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test",
+    "axe:e2e": "playwright test tests/e2e/accessibility.spec.ts",
+    "knowledge:index": "tsx scripts/build-knowledge-index.ts",
+    "db:test:up": "docker compose up -d --wait test-db",
+    "db:test:down": "docker compose down --volumes --remove-orphans",
+    "prisma:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "ajv": "8.20.0",
+    "argon2": "0.45.1",
+    "gray-matter": "4.0.3",
+    "next": "16.3.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.62.1",
+    "@types/node": "22.20.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.3",
+    "happy-dom": "20.12.0",
+    "prisma": "6.19.3",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

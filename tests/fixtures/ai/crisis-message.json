@@ -1,0 +1,4 @@
+{
+  "input": "他们把我锁起来，还打我",
+  "expectedFlags": ["confinement", "violence"]
+}

@@ -1,0 +1,107 @@
+name: Deploy production to Vercel
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: Run pending Prisma migrations before deployment
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Apply database migrations
+    if: ${{ github.event_name == 'push' || inputs.run_migrations == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require production database URL
+        shell: bash
+        run: test -n "${DATABASE_URL:-}" || { echo 'DATABASE_URL is required in the production environment.' >&2; exit 1; }
+
+      - name: Apply migrations
+        run: pnpm exec prisma migrate deploy
+
+  deploy:
+    name: Build and deploy application
+    needs: migrate
+    if: ${{ always() && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require Vercel credentials
+        shell: bash
+        run: |
+          test -n "${VERCEL_TOKEN:-}" || { echo 'VERCEL_TOKEN is required in the production environment.' >&2; exit 1; }
+          test -n "${VERCEL_ORG_ID:-}" || { echo 'VERCEL_ORG_ID is required in the production environment.' >&2; exit 1; }
+          test -n "${VERCEL_PROJECT_ID:-}" || { echo 'VERCEL_PROJECT_ID is required in the production environment.' >&2; exit 1; }
+
+      - name: Link Vercel project
+        shell: bash
+        run: |
+          mkdir -p .vercel
+          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+
+      - name: Pull production environment
+        run: pnpm dlx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build Vercel output
+        run: pnpm dlx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy prebuilt output
+        run: pnpm dlx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
