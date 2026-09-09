@@ -1,4 +1,4 @@
-import type { ParsedMaterialDerivative } from "./parser-registry";
+import { parsedMaterialDerivativeSchema, type ParsedMaterialDerivative } from "./parser-registry";
 
 export interface SafeExtractionWorkerLimits {
   timeoutMs: number;
@@ -46,16 +46,21 @@ export class SafeExtractionWorker {
     }
 
     const result = await this.run(operation);
-    if (typeof result.text !== "string") {
+    const parsed = parsedMaterialDerivativeSchema.safeParse(result);
+    if (!parsed.success) {
+      throw new Error("MATERIAL_PARSER_OUTPUT_INVALID");
+    }
+    const derivative = parsed.data;
+    if (derivative.sourceSpans?.some((span) => span.start > span.end || span.end > derivative.text.length)) {
       throw new Error("MATERIAL_PARSER_OUTPUT_INVALID");
     }
     if (
       this.limits.maxOutputCharacters !== undefined &&
-      result.text.length > this.limits.maxOutputCharacters
+      derivative.text.length > this.limits.maxOutputCharacters
     ) {
       throw new Error("MATERIAL_PARSER_OUTPUT_LIMIT_EXCEEDED");
     }
-    return result;
+    return derivative;
   }
 }
 

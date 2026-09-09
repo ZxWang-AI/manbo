@@ -1,10 +1,17 @@
+import { z } from "zod";
+
 import type { FileSignatureResult } from "@/media/security/file-signature";
 
-export interface ParsedMaterialDerivative {
-  contentRef: string;
-  text: string;
-  sourceSpans?: Array<{ start: number; end: number }>;
-}
+export const parsedMaterialDerivativeSchema = z.strictObject({
+  contentRef: z.string().regex(/^derived\/[A-Za-z0-9._-]{1,160}$/u),
+  text: z.string().min(1),
+  sourceSpans: z.array(z.strictObject({
+    start: z.number().int().nonnegative(),
+    end: z.number().int().nonnegative(),
+  })).optional(),
+});
+
+export type ParsedMaterialDerivative = z.infer<typeof parsedMaterialDerivativeSchema>;
 
 export interface MaterialParser {
   id: string;

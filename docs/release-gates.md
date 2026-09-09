@@ -38,7 +38,7 @@
 
 ### 当前证据状态（2026-09-09）
 
-- 本地已通过：TypeScript、ESLint、71 个 Vitest 文件/346 项单元测试、17 项 Playwright（含 2 项 axe）和 Next.js 生产构建。AI 质量门禁单独通过 2 个文件/12 项测试。解析资源门禁已覆盖输入字节上限、输出字符上限和超时，超限不会进入 AI；这只是代码级保护，不能替代隔离解析运行时。Gateway Provider 工厂已有单元测试，生产环境配置错误 fail-closed 且不回退本地 Provider；扫描器返回错误、抛出异常或超时（默认上限 15 秒）时材料会进入 `scan_failed`，不会进入解析器或 AI。新增本地/staging 加密对象存储适配器、服务端分片 PUT/取消路由和前端预约/分片/完成/失败清理客户端，但不替代真实 S3/KMS；已完成对象 key 不可覆盖。
+- 本地已通过：TypeScript、ESLint、71 个 Vitest 文件/349 项单元测试、17 项 Playwright（含 2 项 axe）和 Next.js 生产构建。AI 质量门禁单独通过 2 个文件/12 项测试。解析资源门禁已覆盖输入字节上限、输出字符上限、超时和严格派生结果 schema，超限或非法结果不会进入 AI；这只是代码级保护，不能替代隔离解析运行时。Gateway Provider 工厂已有单元测试，生产环境配置错误 fail-closed 且不回退本地 Provider；扫描器返回错误、抛出异常或超时（默认上限 15 秒）时材料会进入 `scan_failed`，不会进入解析器或 AI。新增本地/staging 加密对象存储适配器、服务端分片 PUT/取消路由和前端预约/分片/完成/失败清理客户端，但不替代真实 S3/KMS；已完成对象 key 不可覆盖。
 - 本地处理桥接已实现：首次完成落库后尝试按账户、案件和材料三元组入队；失败不会撤销已保存的加密对象或配额，幂等完成重放不会重复入队。任务会验证加密对象元数据、读取长度和归属，再交给 fail-closed 扫描/解析服务。用户只能为 `quarantined`、`saved_unread`、`scan_failed` 材料请求重新排队，材料列表接口不暴露对象 URL、对象 key、密钥或原始内容。持久化队列与 worker 基础已实现：设置 `MATERIAL_PROCESSING_QUEUE=durable` 后 API 使用 PostgreSQL 入队，租约到期可恢复，长任务按租约时长的一半续租，续租/完成/失败要求租约归属，指数退避并进入 `dead_letter`；`pnpm worker:materials` 仅在显式环境开关和独立监督进程中运行，入口的六类事件计数、净化停止摘要和 liveness/readiness 状态契约已有代码。真实 PostgreSQL 生产演练、扫描器/解析器、进程监督、外部指标采集/阈值告警和恢复演练尚未完成，仍不足以通过本门禁。
 - 对话取消链路已覆盖：用户点击“停止生成”后，AbortSignal 从路由传播到编排器及 Gateway fetch。每项尚未开始的持久化副作用前都会检查取消：首项写入前观察到取消时请求返回 HTTP `499`，不写入 assistant 消息、案件补丁或 `model_fallback` 审计；若取消发生在已开始的数据库操作中，事务结果由该操作决定，但路由不会启动后续写入。用户消息仍可保留。
 - CI 已配置 GitHub-hosted runner 上的 PostgreSQL 宿主服务（不使用 Docker service）执行迁移和集成测试；`AI quality gates` 已作为独立 job 运行黄金案例与安全边界回归。提交 `529a390` 的远程证据：[Actions run 34309785468](https://github.com/ZxWang-AI/manbo/actions/runs/34309785468)（四个 job 全部通过）。

@@ -302,6 +302,24 @@ describe("material quarantine and parsing", () => {
     await expect(state.repository.listAiEligibleContentRefs("material-a")).resolves.toEqual([]);
   });
 
+  it("keeps an invalid parser derivative unread and out of AI", async () => {
+    const state = makeRepository();
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([{
+        id: "pdf-parser",
+        supports: (signature) => signature.detectedMime === "application/pdf",
+        parse: async () => ({ contentRef: "../outside", text: "unsafe derivative" }),
+      }]),
+    );
+
+    const result = await service.process({ materialId: "material-a", ...cleanPdf, scanner: cleanScanner });
+
+    expect(result.processingState).toBe("saved_unread");
+    expect(result.eligibleForAi).toBe(false);
+    expect(state.derivatives).toEqual([]);
+  });
+
   it("does not duplicate a derivative when the same parser job is retried", async () => {
     const state = makeRepository();
     const service = new MaterialProcessingService(

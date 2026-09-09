@@ -40,6 +40,33 @@ describe("safe extraction worker resource limits", () => {
     expect(result).toEqual({ contentRef: "derived/safe", text: "安全" });
   });
 
+  it("rejects parser output with an unsafe derivative reference", async () => {
+    const worker = new SafeExtractionWorker({ timeoutMs: 100 });
+
+    await expect(
+      worker.runExtraction(
+        { bytes: Buffer.from("safe") },
+        async () => ({ contentRef: "../outside", text: "safe" }),
+      ),
+    ).rejects.toThrow("MATERIAL_PARSER_OUTPUT_INVALID");
+  });
+
+  it("rejects parser output with out-of-range source spans or extra fields", async () => {
+    const worker = new SafeExtractionWorker({ timeoutMs: 100 });
+
+    await expect(
+      worker.runExtraction(
+        { bytes: Buffer.from("safe") },
+        async () => ({
+          contentRef: "derived/unsafe-spans",
+          text: "safe",
+          sourceSpans: [{ start: 5, end: 2 }],
+          unexpected: "must be rejected",
+        }),
+      ),
+    ).rejects.toThrow("MATERIAL_PARSER_OUTPUT_INVALID");
+  });
+
   it("validates resource limits as positive safe integers", () => {
     expect(() => new SafeExtractionWorker({ timeoutMs: 100, maxInputBytes: 0 })).toThrow(
       "maxInputBytes must be a positive safe integer",
