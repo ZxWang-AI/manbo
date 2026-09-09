@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createMaterialObjectStoreFromEnv } from "@/media/storage/object-store-factory";
+import { createIsolatedMediaGatewayFromEnv } from "@/media/security/isolated-media-gateway";
 import { prisma } from "@/server/db";
 import {
   createMaterialProcessingWorker,
@@ -17,7 +18,14 @@ if (process.env.APP_MODE === "static") {
 const workerId = process.env.MATERIAL_PROCESSING_WORKER_ID?.trim() || `material-worker-${randomUUID()}`;
 const idleDelayMs = parseIdleDelay(process.env.MATERIAL_PROCESSING_IDLE_DELAY_MS);
 const objectStorage = createMaterialObjectStoreFromEnv();
-const worker = createMaterialProcessingWorker({ database: prisma, objectStorage });
+const mediaGateway = createIsolatedMediaGatewayFromEnv();
+const worker = createMaterialProcessingWorker({
+  database: prisma,
+  objectStorage,
+  ...(mediaGateway.available
+    ? { scanner: mediaGateway.scanner, parsers: mediaGateway.parsers }
+    : {}),
+});
 const controller = new AbortController();
 
 const stop = () => controller.abort();

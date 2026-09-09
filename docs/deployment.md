@@ -8,6 +8,7 @@
 - 已创建 Vercel 项目，并确认项目使用 Node.js 22.x。
 - 已创建 PostgreSQL 数据库；生产连接串只放在 GitHub `production` Environment Secret 和 Vercel Production Environment Variables 中。
 - AI Gateway 已完成供应商、模型别名、区域和留存策略审阅。生产环境必须使用 `AI_PROVIDER=gateway`，不能使用 mock provider。
+- 材料安全 Gateway 必须是独立的 HTTPS 服务，并使用已审阅的留存策略。worker 仅在 `MATERIAL_SECURITY_GATEWAY=isolated` 且 URL、token 和 `reviewed:*` 策略全部通过校验时启用；未配置或配置无效时保持 fail-closed scanner/parser，不会把凭据写入日志或错误。
 - 材料处理生产进程必须部署为独立、可监督的 worker，并使用 PostgreSQL 持久化队列；Web 进程不得把进程内队列当作生产替代。worker 入口和显式开关见 `pnpm worker:materials`、`MATERIAL_PROCESSING_WORKER_ENABLED`。
 - 生产环境应为 GitHub Actions 的 `production` Environment 配置 required reviewers，至少在首次迁移前完成一次人工批准。
 
@@ -54,6 +55,19 @@ AI_MODEL_ALIAS=<approved model alias>
 AI_REGION=<approved region>
 AI_RETENTION_POLICY_ID=reviewed:<policy-id>
 ```
+
+材料处理 worker（不要放入 Web 请求进程）的额外配置：
+
+```text
+MATERIAL_SECURITY_GATEWAY=isolated
+MATERIAL_SECURITY_GATEWAY_URL=https://<reviewed-media-gateway-host>
+MATERIAL_SECURITY_GATEWAY_TOKEN=<media-gateway credential>
+MATERIAL_SECURITY_RETENTION_POLICY_ID=reviewed:<policy-id>
+MATERIAL_SECURITY_GATEWAY_TIMEOUT_MS=15000
+MATERIAL_SECURITY_GATEWAY_MAX_RESPONSE_BYTES=2097152
+```
+
+该适配器通过 `POST /v1/media/scan` 与 `POST /v1/media/parse` 发送二进制材料。请求不包含原始文件名、账户/案件/材料 ID、用户叙述或原始文本；Parser 只接收检测到的 MIME 与容器类型。响应必须回显同一 `x-request-id`，并符合严格的 scanner verdict 或派生结果 schema。Gateway 仍只是隔离边界适配器，不能替代真实恶意文件扫描、解析沙箱、零留存合同、网络策略和端到端演练。
 
 `vercel pull` 会在 Actions 临时 runner 上拉取这些变量，随后 `vercel build` 和 `vercel deploy --prebuilt` 使用同一份生产配置。`.vercel` 目录不会提交到仓库。
 

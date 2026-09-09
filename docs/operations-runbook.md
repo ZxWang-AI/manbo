@@ -49,7 +49,7 @@ $env:MATERIAL_OBJECT_STORE_KEY_VERSION = "local-kek-v1"
 
 持久化 worker 入口为 `pnpm worker:materials`（脚本 `scripts/run-material-processing-worker.ts`）。它必须在独立、受监督的进程中运行，并通过 `MATERIAL_PROCESSING_WORKER_ENABLED=true` 显式启用；默认情况下脚本拒绝启动。worker 使用 PostgreSQL 租约领取任务：`pending`/到期的 `processing` 任务可被重新领取，长任务会按租约时长的一半自动心跳续租，失败按指数退避（上限 15 分钟），达到最大尝试次数后进入 `dead_letter`。续租、完成和失败更新均要求当前租约持有者；续租被拒绝或旧 worker 的迟到更新会被拒绝，worker 不会继续确认该任务。入口会汇总六类净化事件计数，并在退出时输出单行 `material_processing_metrics` 摘要；同时输出 `material_processing_worker_state state=<state> live=<bool> ready=<bool>` 状态行，供 supervisor 做 liveness/readiness 接入。监督器只应把完整状态行交给解析器；仅 `state=running live=true ready=true` 视为可投递，`starting`/`draining`/`stopped`/`faulted` 均不可投递；`live=false` 表示外部监督器可按自身策略考虑重启。状态和摘要只覆盖当前进程，仓库只提供输出契约和本地测试，不提供监督器、告警或自动恢复；外部指标后端、阈值告警、supervisor 策略和恢复演练仍是生产门禁。
 
-当前入口只输出净化后的启动/停止、续租/租约丢失和死信事件，不输出账户、案件、材料 ID、文件名、来源摘录、原文或凭据。部署前仍必须补齐真实 PostgreSQL migration/集成测试、进程监督与优雅退出、队列积压/失败/死信指标及告警、扫描器和隔离解析运行时，并完成恢复演练。
+当前入口只输出净化后的启动/停止、续租/租约丢失和死信事件，不输出账户、案件、材料 ID、文件名、来源摘录、原文或凭据。材料 Gateway 通过 `MATERIAL_SECURITY_GATEWAY=isolated` 显式启用；worker 仅在 HTTPS、token 和 `reviewed:*` 留存策略均有效时注入隔离 scanner/parser。未配置或配置无效时使用 fail-closed 默认实现，材料进入 `scan_failed`，不会绕过解析器进入 AI。Gateway 请求只发送材料字节和（Parser）检测到的 MIME/容器元数据，响应 request ID、verdict/derivative 和大小均严格校验，超时或异常不重试。部署前仍必须补齐真实 PostgreSQL migration/集成测试、进程监督与优雅退出、队列积压/失败/死信指标及告警、真实恶意文件扫描与解析沙箱、供应商留存审阅，并完成恢复演练。
 
 ### 静态降级
 
@@ -119,6 +119,10 @@ $env:MATERIAL_OBJECT_STORE_KEY_VERSION = "local-kek-v1"
 | 可用性与排空顺序修复后 ESLint | `pnpm exec eslint . --max-warnings=0` | 2026-09-07T05:54Z | ESLint 控制台输出 | PASS | 待任命；系统 Node 25.8.2/pnpm 9.15.9，非发布运行时 |
 | 可用性与排空顺序修复后生产构建 | `pnpm exec next build` | 2026-09-07T05:58Z | `.next/` 构建输出 | PASS | 待任命；系统 Node 25.8.2/pnpm 9.15.9，非发布运行时 |
 | 可用性契约修复后浏览器回归 | `pnpm exec playwright test` | 2026-09-07T05:47Z | `test-results/`、Playwright 控制台输出 | PASS（17 项；含 2 项 axe 可及性检查） | 待任命；系统 Node 25.8.2/pnpm 9.15.9，非发布运行时 |
+| provider-neutral media Gateway 契约 | `npm test -- --run tests/unit/isolated-media-gateway.test.ts` | 2026-09-09T08:22Z | Vitest 控制台输出 | PASS（6 项；HTTPS、无文件名/案件标识请求、request ID/严格 schema、响应大小、配置 fail-closed） | 待任命；仅适配器契约，不证明真实扫描器或解析沙箱 |
+| media Gateway 接线后全量单元测试 | `npm test` | 2026-09-09T08:27Z | Vitest 控制台输出 | PASS（72 文件/355 项） | 待任命；系统 Node 25.8.2/pnpm 9.15.9，非发布运行时 |
+| media Gateway 接线后 TypeScript、ESLint、生产构建 | `npm run typecheck` + `npm run lint` + `npm run build` | 2026-09-09T08:28Z–08:30Z | TypeScript/ESLint/Next.js 控制台输出 | PASS | 待任命；系统 Node 25.8.2/pnpm 9.15.9，非发布运行时 |
+| media Gateway 接线后浏览器回归 | `npm run test:e2e` | 2026-09-09T08:31Z | `test-results/`、Playwright 控制台输出 | PASS（17 项） | 待任命；系统 Node 25.8.2/pnpm 9.15.9，非发布运行时 |
 
 ## 4. 事故处理
 
