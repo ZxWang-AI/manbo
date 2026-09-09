@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   MAX_CASE_MATERIAL_BYTES,
@@ -20,6 +20,40 @@ describe("material storage limits", () => {
         reservedBytes: 0,
       }),
     ).not.toThrow();
+  });
+
+  it("cancels an active upload by aborting object storage and releasing its reservation", async () => {
+    const aborted: string[] = [];
+    const released: string[] = [];
+    const repository: MaterialReservationRepository = {
+      reserve: async () => { throw new Error("unused"); },
+      findActive: async () => ({
+        uploadId: "upload-a",
+        materialId: "material-a",
+        caseId: "case-a",
+        objectKey: "materials/03030303030303030303030303030303",
+        reservedBytes: 1024,
+        expiresAt: "2026-08-31T12:15:00.000Z",
+      }),
+      attachEncryption: async () => undefined,
+      complete: async () => "completed",
+      release: async (_accountId, uploadId) => { released.push(uploadId); },
+    };
+    const objectStore: MaterialObjectStore = {
+      beginEncryptedUpload: async () => { throw new Error("unused"); },
+      completeEncryptedUpload: async () => { throw new Error("unused"); },
+      abortUpload: async (uploadId) => { aborted.push(uploadId); },
+      deleteObject: async () => undefined,
+    };
+
+    await new MaterialUploadService(repository, objectStore).cancel({
+      accountId: "acct-a",
+      caseId: "case-a",
+      uploadId: "upload-a",
+    });
+
+    expect(aborted).toEqual(["upload-a"]);
+    expect(released).toEqual(["upload-a"]);
   });
 
   it("rejects a file larger than 100 MB before upload", () => {
@@ -69,6 +103,76 @@ describe("material storage limits", () => {
 });
 
 describe("material upload service", () => {
+  it("forwards an owned upload part only through an encrypted-capable object store", async () => {
+    const uploadPart = vi.fn().mockResolvedValue(undefined);
+    const reservation = {
+      uploadId: "upload-a",
+      materialId: "material-a",
+      caseId: "case-a",
+      objectKey: "materials/03030303030303030303030303030303",
+      reservedBytes: 4,
+      expiresAt: "2026-08-31T12:15:00.000Z",
+    };
+    const repository: MaterialReservationRepository = {
+      reserve: async () => reservation,
+      findActive: async () => reservation,
+      attachEncryption: async () => undefined,
+      complete: async () => "completed",
+      release: async () => undefined,
+    };
+    const objectStore: MaterialObjectStore = {
+      beginEncryptedUpload: async () => { throw new Error("unused"); },
+      uploadPart,
+      completeEncryptedUpload: async () => { throw new Error("unused"); },
+      abortUpload: async () => undefined,
+      deleteObject: async () => undefined,
+    };
+
+    await new MaterialUploadService(repository, objectStore).uploadPart({
+      accountId: "acct-a",
+      caseId: "case-a",
+      uploadId: "upload-a",
+      partNumber: 1,
+      bytes: Buffer.from("part"),
+    });
+
+    expect(uploadPart).toHaveBeenCalledWith({ uploadId: "upload-a", partNumber: 1, bytes: Buffer.from("part") });
+  });
+
+  it("rejects part upload when the reservation belongs to another case", async () => {
+    const uploadPart = vi.fn();
+    const repository = {
+      reserve: async () => { throw new Error("unused"); },
+      findActive: async () => ({
+        uploadId: "upload-a",
+        materialId: "material-a",
+        caseId: "case-b",
+        objectKey: "materials/03030303030303030303030303030303",
+        reservedBytes: 4,
+        expiresAt: "2026-08-31T12:15:00.000Z",
+      }),
+      attachEncryption: async () => undefined,
+      complete: async () => "completed" as const,
+      release: async () => undefined,
+    } as MaterialReservationRepository;
+    const objectStore: MaterialObjectStore = {
+      beginEncryptedUpload: async () => { throw new Error("unused"); },
+      uploadPart,
+      completeEncryptedUpload: async () => { throw new Error("unused"); },
+      abortUpload: async () => undefined,
+      deleteObject: async () => undefined,
+    };
+
+    await expect(new MaterialUploadService(repository, objectStore).uploadPart({
+      accountId: "acct-a",
+      caseId: "case-a",
+      uploadId: "upload-a",
+      partNumber: 1,
+      bytes: Buffer.from("part"),
+    })).rejects.toThrow("MATERIAL_UPLOAD_UNAVAILABLE");
+    expect(uploadPart).not.toHaveBeenCalled();
+  });
+
   it("rejects an unavailable reservation before touching object storage", async () => {
     let objectStoreCalls = 0;
     const repository = {
@@ -95,6 +199,7 @@ describe("material upload service", () => {
     await expect(
       new MaterialUploadService(repository, objectStore).complete({
         accountId: "acct-a",
+        caseId: "case-a",
         uploadId: "upload-a",
         objectKey: "materials/03030303030303030303030303030303",
         expectedBytes: 1024,
@@ -137,6 +242,7 @@ describe("material upload service", () => {
     await expect(
       new MaterialUploadService(repository, objectStore).complete({
         accountId: "acct-a",
+        caseId: "case-a",
         uploadId: "upload-a",
         objectKey: "materials/04040404040404040404040404040404",
         expectedBytes: 1024,
@@ -183,6 +289,45 @@ describe("material upload service", () => {
     expect(released).toEqual(["upload-a"]);
   });
 
+  it("does not touch an upload reserved for a different private case", async () => {
+    let objectStoreCalls = 0;
+    const repository = {
+      reserve: async () => { throw new Error("unused"); },
+      findActive: async () => ({
+        uploadId: "upload-a",
+        materialId: "material-a",
+        caseId: "case-b",
+        objectKey: "materials/03030303030303030303030303030303",
+        reservedBytes: 1024,
+        expiresAt: "2026-08-31T12:15:00.000Z",
+      }),
+      attachEncryption: async () => undefined,
+      complete: async () => "completed" as const,
+      release: async () => undefined,
+    } as MaterialReservationRepository;
+    const objectStore: MaterialObjectStore = {
+      beginEncryptedUpload: async () => { throw new Error("unused"); },
+      completeEncryptedUpload: async () => {
+        objectStoreCalls += 1;
+        throw new Error("must not be called");
+      },
+      abortUpload: async () => undefined,
+      deleteObject: async () => undefined,
+    };
+
+    await expect(
+      new MaterialUploadService(repository, objectStore).complete({
+        accountId: "acct-a",
+        caseId: "case-a",
+        uploadId: "upload-a",
+        objectKey: "materials/03030303030303030303030303030303",
+        expectedBytes: 1024,
+        expectedSha256: "a".repeat(64),
+      }),
+    ).rejects.toThrow("MATERIAL_UPLOAD_UNAVAILABLE");
+    expect(objectStoreCalls).toBe(0);
+  });
+
   it("persists encryption metadata before returning a platform upload target", async () => {
     const attached: unknown[] = [];
     const repository: MaterialReservationRepository = {
@@ -207,7 +352,7 @@ describe("material upload service", () => {
           transport: "platform_encrypted_multipart",
           uploadId: "upload-a",
           objectKey: "materials/03030303030303030303030303030303",
-          parts: [],
+          parts: [{ partNumber: 1, url: "provider://upload-a/1", expiresAt: "2026-08-31T12:30:00.000Z" }],
         },
         encryption: {
           scheme: "AES-256-GCM",
@@ -230,6 +375,11 @@ describe("material upload service", () => {
     });
 
     expect(result.uploadTarget.transport).toBe("platform_encrypted_multipart");
+    expect(result.uploadTarget.parts).toEqual([{
+      partNumber: 1,
+      url: "/api/cases/case-a/materials/uploads/upload-a/parts/1",
+      expiresAt: "2026-08-31T12:30:00.000Z",
+    }]);
     expect(attached).toEqual([
       [
         "acct-a",
@@ -327,6 +477,7 @@ describe("material upload service", () => {
     await expect(
       new MaterialUploadService(repository, objectStore).complete({
         accountId: "acct-a",
+        caseId: "case-a",
         uploadId: "upload-a",
         objectKey: "materials/03030303030303030303030303030303",
         expectedBytes: 1024,
@@ -376,6 +527,7 @@ describe("material upload service", () => {
     await expect(
       new MaterialUploadService(repository, objectStore).complete({
         accountId: "acct-a",
+        caseId: "case-a",
         uploadId: "upload-a",
         objectKey: "materials/03030303030303030303030303030303",
         expectedBytes: 1024,
@@ -427,6 +579,7 @@ describe("material upload service", () => {
     await expect(
       new MaterialUploadService(repository, objectStore).complete({
         accountId: "acct-a",
+        caseId: "case-a",
         uploadId: "upload-a",
         objectKey: "materials/03030303030303030303030303030303",
         expectedBytes: 1024,
@@ -435,5 +588,46 @@ describe("material upload service", () => {
     ).rejects.toThrow("database unavailable");
     expect(deleted).toEqual(["materials/03030303030303030303030303030303"]);
     expect(released).toEqual(["upload-a"]);
+  });
+
+  it("keeps a completed encrypted object when the background processing queue is unavailable", async () => {
+    const deleted: string[] = [];
+    const released: string[] = [];
+    const repository: MaterialReservationRepository = {
+      reserve: async () => { throw new Error("unused"); },
+      findActive: async () => ({
+        uploadId: "upload-a",
+        materialId: "material-a",
+        caseId: "case-a",
+        objectKey: "materials/03030303030303030303030303030303",
+        reservedBytes: 1024,
+        expiresAt: "2026-08-31T12:15:00.000Z",
+      }),
+      attachEncryption: async () => undefined,
+      complete: async () => "completed",
+      release: async (_accountId, uploadId) => { released.push(uploadId); },
+    };
+    const objectStore: MaterialObjectStore = {
+      beginEncryptedUpload: async () => { throw new Error("unused"); },
+      completeEncryptedUpload: async () => ({
+        objectKey: "materials/03030303030303030303030303030303",
+        sha256: "a".repeat(64),
+        storedBytes: 1024,
+      }),
+      abortUpload: async () => { throw new Error("must not abort finalized content"); },
+      deleteObject: async (objectKey) => { deleted.push(objectKey); },
+    };
+    const processing = { enqueue: async () => { throw new Error("queue unavailable"); } };
+
+    await expect(new MaterialUploadService(repository, objectStore, processing).complete({
+      accountId: "acct-a",
+      caseId: "case-a",
+      uploadId: "upload-a",
+      objectKey: "materials/03030303030303030303030303030303",
+      expectedBytes: 1024,
+      expectedSha256: "a".repeat(64),
+    })).resolves.toBeUndefined();
+    expect(deleted).toEqual([]);
+    expect(released).toEqual([]);
   });
 });

@@ -140,6 +140,59 @@ describe("material quarantine and parsing", () => {
     expect(result.eligibleForAi).toBe(false);
   });
 
+  it("converts scanner exceptions into scan_failed without invoking a parser", async () => {
+    let parserCalls = 0;
+    const state = makeRepository();
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([{
+        id: "pdf-parser",
+        supports: () => true,
+        parse: async () => {
+          parserCalls += 1;
+          return { contentRef: "derived/unsafe", text: "must not run" };
+        },
+      }]),
+    );
+    const scanner: MalwareScanner = {
+      scan: async () => {
+        throw new Error("scanner process unavailable");
+      },
+    };
+
+    const result = await service.process({
+      materialId: "material-a",
+      ...cleanPdf,
+      scanner,
+    });
+
+    expect(result.processingState).toBe("scan_failed");
+    expect(result.eligibleForAi).toBe(false);
+    expect(parserCalls).toBe(0);
+    await expect(state.repository.listAiEligibleContentRefs("material-a")).resolves.toEqual([]);
+  });
+
+  it("converts a scanner timeout into scan_failed without waiting indefinitely", async () => {
+    const state = makeRepository();
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([]),
+      { scannerTimeoutMs: 5 },
+    );
+    const scanner: MalwareScanner = {
+      scan: async () => new Promise(() => undefined),
+    };
+
+    const result = await service.process({
+      materialId: "material-a",
+      ...cleanPdf,
+      scanner,
+    });
+
+    expect(result.processingState).toBe("scan_failed");
+    expect(result.eligibleForAi).toBe(false);
+  });
+
   it("does not move a blocked material back to a readable state on retry", async () => {
     const state = makeRepository(makeRecord({ processingState: "blocked_malicious" }));
     const service = new MaterialProcessingService(state.repository, new ParserRegistry([]));

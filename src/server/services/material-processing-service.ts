@@ -7,6 +7,12 @@ import { ParserRegistry } from "@/media/parsers/parser-registry";
 import { detectFileSignature } from "@/media/security/file-signature";
 import type { MalwareScanner } from "@/media/security/malware-scanner";
 
+const DEFAULT_SCANNER_TIMEOUT_MS = 15_000;
+
+export interface MaterialProcessingServiceOptions {
+  scannerTimeoutMs?: number;
+}
+
 export interface MaterialProcessingRepository {
   get(materialId: string): Promise<MaterialProcessingRecord | null>;
   transition(
@@ -19,10 +25,19 @@ export interface MaterialProcessingRepository {
 }
 
 export class MaterialProcessingService {
+  private readonly scannerTimeoutMs: number;
+
   constructor(
     private readonly repository: MaterialProcessingRepository,
     private readonly parsers: ParserRegistry,
-  ) {}
+    options: MaterialProcessingServiceOptions = {},
+  ) {
+    const scannerTimeoutMs = options.scannerTimeoutMs ?? DEFAULT_SCANNER_TIMEOUT_MS;
+    if (!Number.isInteger(scannerTimeoutMs) || scannerTimeoutMs <= 0 || scannerTimeoutMs > 60_000) {
+      throw new TypeError("scannerTimeoutMs must be an integer between 1 and 60000 milliseconds");
+    }
+    this.scannerTimeoutMs = scannerTimeoutMs;
+  }
 
   async process(input: {
     materialId: string;
@@ -49,7 +64,17 @@ export class MaterialProcessingService {
       return this.transition(scanning, "blocked_malicious", { eligibleForAi: false });
     }
 
-    const verdict = await input.scanner.scan({ bytes: input.bytes, filename: input.originalFilename });
+    let verdict: Awaited<ReturnType<MalwareScanner["scan"]>>;
+    try {
+      verdict = await this.scanWithTimeout(input.scanner, {
+        bytes: input.bytes,
+        filename: input.originalFilename,
+      });
+    } catch {
+      // Scanner failures are fail-closed: retain the encrypted original, keep it
+      // out of parsers/AI, and leave the state explicitly retryable.
+      return this.transition(scanning, "scan_failed", { eligibleForAi: false });
+    }
     if (verdict.verdict !== "clean") {
       return this.transition(scanning, verdict.verdict === "malicious" ? "blocked_malicious" : "scan_failed", {
         eligibleForAi: false,
@@ -71,6 +96,23 @@ export class MaterialProcessingService {
       return this.transition(queued, "parsed", { eligibleForAi: true });
     } catch {
       return this.transition(queued, "saved_unread", { eligibleForAi: false });
+    }
+  }
+
+  private async scanWithTimeout(
+    scanner: MalwareScanner,
+    input: { bytes: Uint8Array; filename: string },
+  ): Promise<Awaited<ReturnType<MalwareScanner["scan"]>>> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        scanner.scan(input),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => reject(new Error("MATERIAL_SCANNER_TIMEOUT")), this.scannerTimeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
   }
 

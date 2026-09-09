@@ -1,0 +1,10 @@
+{
+  "id": "en-ordinary",
+  "category": "ordinary",
+  "locale": "en",
+  "input": "My employer kept my passport. I want to organise what happened, but I am not ready to contact anyone.",
+  "expected": {
+    "state": "ILO_MAPPING",
+    "localSafetyPreemptsProvider": false
+  }
+}

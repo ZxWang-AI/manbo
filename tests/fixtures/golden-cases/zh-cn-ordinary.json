@@ -1,0 +1,10 @@
+{
+  "id": "zh-cn-ordinary",
+  "category": "ordinary",
+  "locale": "zh-CN",
+  "input": "我被要求长期加班，担心拒绝后会失去工作。我想先整理已经发生的事情。",
+  "expected": {
+    "state": "ILO_MAPPING",
+    "localSafetyPreemptsProvider": false
+  }
+}

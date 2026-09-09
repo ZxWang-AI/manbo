@@ -55,15 +55,17 @@ export interface AssistantTurn {
 }
 
 export interface AiProvider {
-  detectSafety(input: string): Promise<SafetyFlag[]>;
-  extractFacts(input: string, context: ConversationContext): Promise<FactExtraction>;
+  detectSafety(input: string, signal?: AbortSignal): Promise<SafetyFlag[]>;
+  extractFacts(input: string, context: ConversationContext, signal?: AbortSignal): Promise<FactExtraction>;
   mapIndicators(
     input: string,
     context: ConversationContext,
+    signal?: AbortSignal,
   ): Promise<IndicatorAssessment[]>;
   summarizeCoverage(
     input: string,
     context: ConversationContext,
+    signal?: AbortSignal,
   ): Promise<EvidenceCoverageItem[]>;
 }
 
@@ -96,7 +98,7 @@ export interface ModelInputPolicy {
 }
 
 export interface ConversationOrchestrator {
-  handleMessage(input: string, session: ConversationSession): Promise<AssistantTurn>;
+  handleMessage(input: string, session: ConversationSession, signal?: AbortSignal): Promise<AssistantTurn>;
 }
 
 export class ModelInputConfirmationRequired extends Error {
@@ -106,5 +108,12 @@ export class ModelInputConfirmationRequired extends Error {
     super("Model input requires explicit user confirmation");
     this.name = "ModelInputConfirmationRequired";
     this.hintIds = [...hintIds];
+  }
+}
+
+export class ConversationCancelledError extends Error {
+  constructor() {
+    super("Conversation request was cancelled");
+    this.name = "ConversationCancelledError";
   }
 }

@@ -63,3 +63,17 @@ export function buildSessionCookie(
 
   return attributes.join("; ");
 }
+
+export function buildExpiredSessionCookie(
+  nodeEnvironment: "development" | "test" | "production",
+): string {
+  const attributes = [
+    "manbo_session=",
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=0",
+  ];
+  if (nodeEnvironment === "production") attributes.push("Secure");
+  return attributes.join("; ");
+}

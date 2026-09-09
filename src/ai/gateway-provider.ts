@@ -9,6 +9,7 @@ import {
   validateSafetyFlags,
 } from "@/ai/output-contract";
 import {
+  ConversationCancelledError,
   ModelInputConfirmationRequired,
   type AiProvider,
   type ConversationContext,
@@ -116,17 +117,18 @@ export class GatewayAiProvider implements AiProvider {
     }
   }
 
-  async detectSafety(input: string): Promise<SafetyFlag[]> {
+  async detectSafety(input: string, signal?: AbortSignal): Promise<SafetyFlag[]> {
     const context = emptyContext();
-    const output = await this.requestStructuredTurn("detect_safety", input, context);
+    const output = await this.requestStructuredTurn("detect_safety", input, context, signal);
     return validateSafetyFlags(output);
   }
 
   async extractFacts(
     input: string,
     context: ConversationContext,
+    signal?: AbortSignal,
   ): Promise<FactExtraction> {
-    const output = await this.requestStructuredTurn("extract_facts", input, context);
+    const output = await this.requestStructuredTurn("extract_facts", input, context, signal);
     return validateFactExtraction(output, {
       conversationMessageIds: context.sourceMessageIds,
       knowledgeSourceIds: this.knowledgeSourceIds,
@@ -136,8 +138,9 @@ export class GatewayAiProvider implements AiProvider {
   async mapIndicators(
     input: string,
     context: ConversationContext,
+    signal?: AbortSignal,
   ): Promise<IndicatorAssessment[]> {
-    const output = await this.requestStructuredTurn("map_indicators", input, context);
+    const output = await this.requestStructuredTurn("map_indicators", input, context, signal);
     return validateIndicatorAssessments(output, {
       conversationMessageIds: context.sourceMessageIds,
       knowledgeSourceIds: this.knowledgeSourceIds,
@@ -147,8 +150,9 @@ export class GatewayAiProvider implements AiProvider {
   async summarizeCoverage(
     input: string,
     context: ConversationContext,
+    signal?: AbortSignal,
   ): Promise<EvidenceCoverageItem[]> {
-    const output = await this.requestStructuredTurn("summarize_coverage", input, context);
+    const output = await this.requestStructuredTurn("summarize_coverage", input, context, signal);
     return validateEvidenceCoverage(output, {
       conversationMessageIds: context.sourceMessageIds,
       knowledgeSourceIds: this.knowledgeSourceIds,
@@ -159,11 +163,14 @@ export class GatewayAiProvider implements AiProvider {
     operation: GatewayOperation,
     input: string,
     context: ConversationContext,
+    signal?: AbortSignal,
   ): Promise<unknown> {
+    if (signal?.aborted) throw new ConversationCancelledError();
     const decision = await this.options.inputPolicy.prepare(input);
     if (decision.kind === "confirmation_required") {
       throw new ModelInputConfirmationRequired(decision.hintIds);
     }
+    if (signal?.aborted) throw new ConversationCancelledError();
 
     const requestId = this.requestId();
     const envelope: GatewayTurnRequest = {
@@ -176,6 +183,8 @@ export class GatewayAiProvider implements AiProvider {
     };
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const abortForCaller = () => controller.abort();
+    signal?.addEventListener("abort", abortForCaller, { once: true });
 
     try {
       const response = await this.fetchImpl(this.endpoint, {
@@ -218,6 +227,7 @@ export class GatewayAiProvider implements AiProvider {
       return parsed.output;
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortForCaller);
     }
   }
 }

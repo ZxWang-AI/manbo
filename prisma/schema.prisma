@@ -27,9 +27,24 @@ enum MessageRole {
 enum AuditAction {
   create
   update
+  export_preview
   export
   delete
   consent_change
+  model_fallback
+  material_view
+  material_play
+  material_download
+  admin_review_create
+  admin_review_update
+  admin_case_modify
+  admin_case_delete
+}
+
+enum AuditOutcome {
+  allowed
+  denied
+  failed
 }
 
 enum CleanupStatus {
@@ -37,6 +52,12 @@ enum CleanupStatus {
   running
   completed
   failed
+}
+
+enum AppealStatus {
+  submitted
+  under_review
+  resolved
 }
 
 model Account {
@@ -51,6 +72,8 @@ model Account {
   sessions    AuthSession[]
   auditEvents AuditEvent[]
   cleanupJobs CleanupJob[]
+  appeals     AppealRecord[]
+  processingJobs MaterialProcessingJob[]
 
   @@index([createdAt])
   @@map("accounts")
@@ -113,6 +136,10 @@ model CaseRecord {
   storageUsage  CaseStorageUsage?
   materials     Material[]
   voiceSessions VoiceSession[]
+  adminReviews  AdminReviewVersion[]
+  adminChanges  AdminCaseChangeVersion[]
+  appeals       AppealRecord[]
+  processingJobs MaterialProcessingJob[]
 
   @@unique([caseId, accountId])
   @@index([accountId, lifecycle])
@@ -137,6 +164,53 @@ model CaseRecordRevision {
   @@map("case_record_revisions")
 }
 
+enum AdminReviewStatus {
+  intake_rejected
+  evidence_incomplete
+  credibility_concern
+  demonstrably_false
+}
+
+model AdminReviewVersion {
+  adminReviewVersionId String            @id @map("admin_review_version_id") @db.Uuid
+  caseId               String            @map("case_id") @db.Uuid
+  reviewerId           String            @map("reviewer_id") @db.VarChar(120)
+  status               AdminReviewStatus
+  rationale            String?           @db.Text
+  sourceRefs           Json              @map("source_refs")
+  supersedesId         String?           @map("supersedes_id") @db.Uuid
+  secondReviewerId     String?           @map("second_reviewer_id") @db.VarChar(120)
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  case CaseRecord @relation(fields: [caseId], references: [caseId], onDelete: Cascade)
+  appeals AppealRecord[]
+
+  @@index([caseId, createdAt])
+  @@index([supersedesId])
+  @@map("admin_review_versions")
+}
+
+enum AdminCaseChangeAction {
+  modify
+  delete
+}
+
+model AdminCaseChangeVersion {
+  changeVersionId  String                @id @map("change_version_id") @db.Uuid
+  caseId           String                @map("case_id") @db.Uuid
+  adminId          String                @map("admin_id") @db.VarChar(120)
+  action           AdminCaseChangeAction
+  expectedVersion  Int?                  @map("expected_version")
+  resultingVersion Int?                  @map("resulting_version")
+  patch            Json
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  case CaseRecord @relation(fields: [caseId], references: [caseId], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+  @@map("admin_case_change_versions")
+}
+
 enum MaterialStatus {
   reserved
   uploaded
@@ -152,6 +226,14 @@ enum MaterialProcessingState {
   parsed
   blocked_malicious
   scan_failed
+}
+
+enum MaterialProcessingJobStatus {
+  pending
+  processing
+  completed
+  failed
+  dead_letter
 }
 
 enum MaterialSignatureStatus {
@@ -200,10 +282,38 @@ model Material {
   case           CaseRecord              @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
   objectVersions MaterialObjectVersion[]
   derivatives    MaterialDerivative[]
+  processingJobs MaterialProcessingJob[]
 
   @@unique([materialId, caseId, accountId])
   @@index([caseId, accountId, status])
   @@map("materials")
+}
+
+model MaterialProcessingJob {
+  jobId         String                       @id @map("job_id") @db.Uuid
+  accountId     String                       @map("account_id") @db.Char(32)
+  caseId        String                       @map("case_id") @db.Uuid
+  materialId    String                       @map("material_id") @db.Uuid
+  status        MaterialProcessingJobStatus @default(pending)
+  attempts      Int                          @default(0)
+  maxAttempts   Int                          @default(5) @map("max_attempts")
+  availableAt   DateTime                     @default(now()) @map("available_at") @db.Timestamptz(3)
+  leaseUntil    DateTime?                    @map("lease_until") @db.Timestamptz(3)
+  leasedBy      String?                      @map("leased_by") @db.VarChar(120)
+  lastErrorCode String?                      @map("last_error_code") @db.VarChar(120)
+  createdAt     DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  startedAt     DateTime?                    @map("started_at") @db.Timestamptz(3)
+  completedAt   DateTime?                    @map("completed_at") @db.Timestamptz(3)
+  updatedAt     DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  case     CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+  account  Account    @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
+  material Material   @relation(fields: [materialId, caseId, accountId], references: [materialId, caseId, accountId], onDelete: Cascade)
+
+  @@index([status, availableAt])
+  @@index([caseId, accountId])
+  @@index([materialId, caseId, accountId])
+  @@map("material_processing_jobs")
 }
 
 model MaterialDerivative {
@@ -400,6 +510,9 @@ model AuditEvent {
   accountId    String      @map("account_id") @db.Char(32)
   caseId       String?     @map("case_id") @db.Uuid
   action       AuditAction
+  actorId      String?     @map("actor_id") @db.VarChar(120)
+  materialId   String?     @map("material_id") @db.Uuid
+  outcome      AuditOutcome?
   metadata     Json
   occurredAt   DateTime    @default(now()) @map("occurred_at") @db.Timestamptz(3)
 
@@ -407,6 +520,26 @@ model AuditEvent {
 
   @@index([occurredAt])
   @@map("audit_events")
+}
+
+model AppealRecord {
+  appealId            String       @id @map("appeal_id") @db.Uuid
+  caseId              String       @map("case_id") @db.Uuid
+  accountId           String       @map("account_id") @db.Char(32)
+  adminReviewVersionId String      @map("admin_review_version_id") @db.Uuid
+  statement           String       @db.Text
+  supportingMaterialIds Json       @map("supporting_material_ids")
+  status              AppealStatus @default(submitted)
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  case       CaseRecord        @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+  account    Account           @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+  adminReviewVersion AdminReviewVersion @relation(fields: [adminReviewVersionId], references: [adminReviewVersionId], onDelete: Restrict)
+
+  @@index([caseId, accountId, createdAt])
+  @@index([adminReviewVersionId])
+  @@map("appeal_records")
 }
 
 model CleanupJob {
@@ -424,5 +557,6 @@ model CleanupJob {
 
   @@index([status])
   @@index([createdAt])
+  @@unique([caseId, target])
   @@map("cleanup_jobs")
 }

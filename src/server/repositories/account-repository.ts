@@ -27,8 +27,15 @@ export interface AuthSession {
   expiresAt: string;
 }
 
+export interface CreatedPseudonymousAccount {
+  accountId: string;
+  alias: string;
+  recoverySecret: string;
+  session: AuthSession;
+}
+
 export interface AccountRepository {
-  createPseudonymous(): Promise<{ accountId: string; alias: string; recoverySecret: string }>;
+  createPseudonymous(): Promise<CreatedPseudonymousAccount>;
   recover(alias: string, recoverySecret: string): Promise<AuthSession | null>;
   resumeSession(sessionId: string): Promise<AuthSession | null>;
   revokeSession(sessionId: string): Promise<void>;
@@ -56,17 +63,40 @@ export class PrismaAccountRepository implements AccountRepository {
         credentials.recoverySecret,
         recoveryHashOptions,
       );
+      const now = this.now();
+      const sessionId = createOpaqueSessionId();
+      const idleExpiresAt = new Date(now.getTime() + SESSION_IDLE_MILLISECONDS);
+      const absoluteExpiresAt = new Date(now.getTime() + SESSION_ABSOLUTE_MILLISECONDS);
 
       try {
-        await this.database.account.create({
-          data: {
-            accountId: credentials.accountId,
-            alias: credentials.alias,
-            aliasHash: hashOpaqueToken(normalizeAlias(credentials.alias)),
-            recoverySecretHash,
-          },
+        await this.database.$transaction(async (transaction) => {
+          await transaction.account.create({
+            data: {
+              accountId: credentials.accountId,
+              alias: credentials.alias,
+              aliasHash: hashOpaqueToken(normalizeAlias(credentials.alias)),
+              recoverySecretHash,
+            },
+          });
+          await transaction.authSession.create({
+            data: {
+              sessionIdHash: hashOpaqueToken(sessionId),
+              accountId: credentials.accountId,
+              createdAt: now,
+              lastSeenAt: now,
+              idleExpiresAt,
+              absoluteExpiresAt,
+            },
+          });
         });
-        return credentials;
+        return {
+          ...credentials,
+          session: {
+            accountId: credentials.accountId,
+            sessionId,
+            expiresAt: idleExpiresAt.toISOString(),
+          },
+        };
       } catch (error) {
         if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
           throw error;
@@ -132,6 +162,7 @@ export class PrismaAccountRepository implements AccountRepository {
           data: {
             sessionIdHash: hashOpaqueToken(sessionId),
             accountId: account.accountId,
+            createdAt: now,
             lastSeenAt: now,
             idleExpiresAt,
             absoluteExpiresAt,

@@ -1,0 +1,10 @@
+{
+  "id": "crisis-confinement",
+  "category": "crisis",
+  "locale": "en",
+  "input": "They locked me in. I cannot leave safely right now.",
+  "expected": {
+    "state": "SAFETY_ESCALATION",
+    "localSafetyPreemptsProvider": true
+  }
+}

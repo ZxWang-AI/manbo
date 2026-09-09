@@ -54,4 +54,29 @@ describe("material reservation repository", () => {
       }),
     ).rejects.toThrow("MATERIAL_UPLOAD_UNAVAILABLE");
   });
+
+  it("attaches the browser filename and declared MIME only to the active owned material", async () => {
+    const executeRaw = vi.fn().mockResolvedValue(1);
+    const database = { $executeRaw: executeRaw } as unknown as PrismaClient;
+    const repository = new PrismaMaterialReservationRepository(database);
+
+    await expect(repository.attachMetadata(
+      "a".repeat(32),
+      "2b130ede-c0ad-4396-b885-a9eca4026d02",
+      { originalFilename: "工资单.pdf", declaredMime: "application/pdf" },
+    )).resolves.toBeUndefined();
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when the reservation metadata update does not affect one active row", async () => {
+    const executeRaw = vi.fn().mockResolvedValue(0);
+    const database = { $executeRaw: executeRaw } as unknown as PrismaClient;
+    const repository = new PrismaMaterialReservationRepository(database);
+
+    await expect(repository.attachMetadata(
+      "a".repeat(32),
+      "2b130ede-c0ad-4396-b885-a9eca4026d02",
+      { originalFilename: "notes.txt" },
+    )).rejects.toThrow("MATERIAL_UPLOAD_UNAVAILABLE");
+  });
 });

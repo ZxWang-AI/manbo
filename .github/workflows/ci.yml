@@ -6,6 +6,7 @@ on:
       - main
       - "codex/**"
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -58,3 +59,83 @@ jobs:
 
       - name: Dependency audit
         run: pnpm audit --audit-level=high
+
+  integration:
+    name: PostgreSQL integration checks (host service)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_MODE: static
+      NODE_ENV: test
+      DATABASE_URL: postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public
+      MANBO_TEST_DATABASE_RESET: confirmed
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install and start PostgreSQL without Docker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql postgresql-client
+          sudo systemctl start postgresql
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE USER manbo WITH PASSWORD 'manbo_test';"
+          sudo -u postgres createdb --owner=manbo manbo_test
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET port = '55432';"
+          sudo systemctl restart postgresql
+          pg_isready --host=127.0.0.1 --port=55432 --dbname=manbo_test --username=manbo
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm exec prisma generate
+
+      - name: Apply migrations
+        run: pnpm exec prisma migrate deploy
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+  e2e:
+    name: Browser and accessibility checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_MODE: static
+      NODE_ENV: test
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run browser and accessibility checks
+        run: pnpm test:e2e

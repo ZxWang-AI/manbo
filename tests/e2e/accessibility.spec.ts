@@ -12,3 +12,15 @@ test("has no critical or serious accessibility violations", async ({ page }) => 
 
   expect(releaseBlockingViolations).toEqual([]);
 });
+
+test("conversation workspace has no critical or serious violations", async ({ page }) => {
+  await page.goto("/start");
+  await expect(page.getByRole("heading", { name: "从你愿意分享的部分开始" })).toBeVisible();
+
+  const scan = await new AxeBuilder({ page }).analyze();
+  const releaseBlockingViolations = scan.violations.filter(
+    ({ impact }) => impact === "critical" || impact === "serious",
+  );
+
+  expect(releaseBlockingViolations).toEqual([]);
+});

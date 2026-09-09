@@ -21,8 +21,14 @@ export interface MaterialReservationRepository {
     accountId: string;
     caseId: string;
     byteLength: number;
+    originalFilename?: string | undefined;
+    declaredMime?: string | undefined;
   }): Promise<MaterialUploadReservation>;
   findActive(accountId: string, uploadId: string): Promise<MaterialUploadReservation | null>;
+  attachMetadata?(accountId: string, uploadId: string, metadata: {
+    originalFilename?: string | undefined;
+    declaredMime?: string | undefined;
+  }): Promise<void>;
   attachEncryption(
     accountId: string,
     uploadId: string,
@@ -105,6 +111,26 @@ export class PrismaMaterialReservationRepository implements MaterialReservationR
     `);
     const row = rows[0];
     return row ? toReservation(row) : null;
+  }
+
+  async attachMetadata(
+    accountId: string,
+    uploadId: string,
+    metadata: { originalFilename?: string | undefined; declaredMime?: string | undefined },
+  ): Promise<void> {
+    const updated = await this.database.$executeRaw(Prisma.sql`
+      UPDATE "materials" m
+      SET "original_filename" = ${metadata.originalFilename ?? null},
+          "declared_mime" = ${metadata.declaredMime ?? null}
+      FROM "material_upload_reservations" r
+      WHERE r."upload_id" = ${uploadId}::uuid
+        AND r."account_id" = ${accountId}
+        AND r."status" = 'reserved'
+        AND m."material_id" = r."material_id"
+        AND m."account_id" = r."account_id"
+        AND m."status" = 'reserved'
+    `);
+    if (updated !== 1) throw new Error("MATERIAL_UPLOAD_UNAVAILABLE");
   }
 
   async attachEncryption(
