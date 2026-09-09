@@ -60,6 +60,38 @@ jobs:
       - name: Dependency audit
         run: pnpm audit --audit-level=high
 
+  ai-quality:
+    name: AI quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APP_MODE: static
+      NODE_ENV: test
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.24.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm exec prisma generate
+
+      - name: Run AI quality gates
+        run: pnpm test:ai-quality
+
   integration:
     name: PostgreSQL integration checks (host service)
     runs-on: ubuntu-latest
