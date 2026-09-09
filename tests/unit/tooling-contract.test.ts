@@ -58,6 +58,17 @@ describe("Task 1 tooling contract", () => {
     expect(integrationJob).not.toContain("image: postgres");
   });
 
+  it("uses Node 24-compatible GitHub Actions", () => {
+    const workflow = readFileSync(
+      path.join(rootDirectory, ".github/workflows/ci.yml"),
+      "utf8",
+    );
+
+    expect(workflow).toContain("actions/checkout@v7");
+    expect(workflow).toContain("actions/setup-node@v7");
+    expect(workflow).toContain("pnpm/action-setup@v6");
+  });
+
   it("wires the material worker to the sanitized metrics contract", () => {
     const worker = readFileSync(
       path.join(rootDirectory, "scripts/run-material-processing-worker.ts"),
