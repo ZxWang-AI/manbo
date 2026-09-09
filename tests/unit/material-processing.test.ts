@@ -140,6 +140,59 @@ describe("material quarantine and parsing", () => {
     expect(result.eligibleForAi).toBe(false);
   });
 
+  it("converts scanner exceptions into scan_failed without invoking a parser", async () => {
+    let parserCalls = 0;
+    const state = makeRepository();
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([{
+        id: "pdf-parser",
+        supports: () => true,
+        parse: async () => {
+          parserCalls += 1;
+          return { contentRef: "derived/unsafe", text: "must not run" };
+        },
+      }]),
+    );
+    const scanner: MalwareScanner = {
+      scan: async () => {
+        throw new Error("scanner process unavailable");
+      },
+    };
+
+    const result = await service.process({
+      materialId: "material-a",
+      ...cleanPdf,
+      scanner,
+    });
+
+    expect(result.processingState).toBe("scan_failed");
+    expect(result.eligibleForAi).toBe(false);
+    expect(parserCalls).toBe(0);
+    await expect(state.repository.listAiEligibleContentRefs("material-a")).resolves.toEqual([]);
+  });
+
+  it("converts a scanner timeout into scan_failed without waiting indefinitely", async () => {
+    const state = makeRepository();
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([]),
+      { scannerTimeoutMs: 5 },
+    );
+    const scanner: MalwareScanner = {
+      scan: async () => new Promise(() => undefined),
+    };
+
+    const result = await service.process({
+      materialId: "material-a",
+      ...cleanPdf,
+      scanner,
+    });
+
+    expect(result.processingState).toBe("scan_failed");
+    expect(result.eligibleForAi).toBe(false);
+  });
+
   it("does not move a blocked material back to a readable state on retry", async () => {
     const state = makeRepository(makeRecord({ processingState: "blocked_malicious" }));
     const service = new MaterialProcessingService(state.repository, new ParserRegistry([]));
@@ -205,6 +258,66 @@ describe("material quarantine and parsing", () => {
     await expect(
       worker.run(async () => new Promise(() => undefined)),
     ).rejects.toThrow("MATERIAL_PARSER_TIMEOUT");
+  });
+
+  it("keeps parser input above the configured limit unread and out of AI", async () => {
+    const state = makeRepository();
+    let parserCalls = 0;
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([{
+        id: "pdf-parser",
+        supports: (signature) => signature.detectedMime === "application/pdf",
+        parse: async () => {
+          parserCalls += 1;
+          return { contentRef: "derived/too-large", text: "must not run" };
+        },
+      }]),
+      { parserMaxInputBytes: 4 },
+    );
+
+    const result = await service.process({ materialId: "material-a", ...cleanPdf, scanner: cleanScanner });
+
+    expect(result.processingState).toBe("saved_unread");
+    expect(result.eligibleForAi).toBe(false);
+    expect(parserCalls).toBe(0);
+  });
+
+  it("keeps parser output above the configured limit unread and out of AI", async () => {
+    const state = makeRepository();
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([{
+        id: "pdf-parser",
+        supports: (signature) => signature.detectedMime === "application/pdf",
+        parse: async () => ({ contentRef: "derived/too-large", text: "12345" }),
+      }]),
+      { parserMaxOutputCharacters: 4 },
+    );
+
+    const result = await service.process({ materialId: "material-a", ...cleanPdf, scanner: cleanScanner });
+
+    expect(result.processingState).toBe("saved_unread");
+    expect(result.eligibleForAi).toBe(false);
+    await expect(state.repository.listAiEligibleContentRefs("material-a")).resolves.toEqual([]);
+  });
+
+  it("keeps an invalid parser derivative unread and out of AI", async () => {
+    const state = makeRepository();
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([{
+        id: "pdf-parser",
+        supports: (signature) => signature.detectedMime === "application/pdf",
+        parse: async () => ({ contentRef: "../outside", text: "unsafe derivative" }),
+      }]),
+    );
+
+    const result = await service.process({ materialId: "material-a", ...cleanPdf, scanner: cleanScanner });
+
+    expect(result.processingState).toBe("saved_unread");
+    expect(result.eligibleForAi).toBe(false);
+    expect(state.derivatives).toEqual([]);
   });
 
   it("does not duplicate a derivative when the same parser job is retried", async () => {

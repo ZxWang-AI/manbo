@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/server/db";
+import { hashOpaqueToken } from "@/server/auth";
 import { PrismaAccountRepository } from "@/server/repositories/account-repository";
 import {
   ConcurrencyConflict,
@@ -54,7 +55,16 @@ async function beginChildInsertPause() {
     releaseLock = resolve;
   });
   const holder = prisma.$transaction(async (transaction) => {
-    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(27182, 81828)`;
+    // `pg_advisory_xact_lock` returns PostgreSQL's `void` type. Prisma cannot
+    // deserialize a void column from `$queryRaw`, so acquire the lock inside a
+    // DO block that returns no result set.
+    await transaction.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        PERFORM pg_advisory_xact_lock(27182, 81828);
+      END
+      $$;
+    `);
     announceAcquired();
     await release;
   });
@@ -194,7 +204,7 @@ describe("private case persistence", () => {
     expect(session).not.toBeNull();
     expect(session?.accountId).toBe(created.accountId);
     const persistedSession = await prisma.authSession.findFirstOrThrow({
-      where: { accountId: created.accountId },
+      where: { sessionIdHash: hashOpaqueToken(session?.sessionId ?? "") },
     });
     expect(persistedSession.sessionIdHash).not.toBe(session?.sessionId);
     expect(persistedSession.idleExpiresAt.toISOString()).toBe(session?.expiresAt);

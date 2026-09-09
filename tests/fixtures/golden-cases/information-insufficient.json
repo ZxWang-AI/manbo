@@ -1,0 +1,10 @@
+{
+  "id": "information-insufficient",
+  "category": "information_insufficient",
+  "locale": "zh-CN",
+  "input": "我现在还不清楚发生地，也不方便提供更多细节；我想先知道可以保存哪些信息。",
+  "expected": {
+    "state": "ILO_MAPPING",
+    "localSafetyPreemptsProvider": false
+  }
+}

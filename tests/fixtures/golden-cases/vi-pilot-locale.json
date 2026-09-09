@@ -1,0 +1,10 @@
+{
+  "id": "vi-pilot-locale",
+  "category": "pilot_locale",
+  "locale": "vi",
+  "input": "Tôi bị giữ hộ chiếu và không biết mình có thể rời nơi làm việc hay không. Tôi chỉ muốn ghi lại sự việc.",
+  "expected": {
+    "state": "ILO_MAPPING",
+    "localSafetyPreemptsProvider": false
+  }
+}

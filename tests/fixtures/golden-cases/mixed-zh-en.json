@@ -1,0 +1,10 @@
+{
+  "id": "mixed-zh-en",
+  "category": "mixed_language",
+  "locale": "zh-CN+en",
+  "input": "工头说 I cannot leave until I pay a recruitment fee。我想整理时间线，但现在没有安全的材料可以上传。",
+  "expected": {
+    "state": "ILO_MAPPING",
+    "localSafetyPreemptsProvider": false
+  }
+}

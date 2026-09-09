@@ -68,6 +68,8 @@ export default function HomePage() {
           </div>
         </form>
 
+        <a className="primary-button primary-button--inline" href="/start">进入 AI 对话工作台</a>
+
         <p className="boundary-note">你可以随时停下、修改或删除内容；未经确认，不会替你对外提交。</p>
       </section>
     </main>

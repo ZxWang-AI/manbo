@@ -13,7 +13,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm dev --hostname 127.0.0.1 --port 3000",
+    // Invoke the checked-in local binary so E2E can run even when the host's
+    // pnpm shim is older than the repository's packageManager declaration.
+    command: "node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 3000",
     url: "http://127.0.0.1:3000",
     reuseExistingServer: false,
   },

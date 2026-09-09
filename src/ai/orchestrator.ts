@@ -5,6 +5,7 @@ import {
   validateSafetyFlags,
 } from "@/ai/output-contract";
 import {
+  ConversationCancelledError,
   ModelInputConfirmationRequired,
   type AiProvider,
   type AssistantTurn,
@@ -135,16 +136,35 @@ function fallbackTurn(state: ConversationState): AssistantTurn {
   };
 }
 
-async function withDeadline<T>(task: Promise<T>, timeoutMs: number): Promise<T> {
+function throwIfCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new ConversationCancelledError();
+  }
+}
+
+async function withDeadline<T>(
+  task: Promise<T>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  throwIfCancelled(signal);
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let removeAbortListener: (() => void) | undefined;
   const deadline = new Promise<never>((_resolve, reject) => {
     timeout = setTimeout(() => reject(new Error("AI provider deadline exceeded")), timeoutMs);
   });
+  const cancellation = new Promise<never>((_resolve, reject) => {
+    if (!signal) return;
+    const rejectForCancellation = () => reject(new ConversationCancelledError());
+    signal.addEventListener("abort", rejectForCancellation, { once: true });
+    removeAbortListener = () => signal.removeEventListener("abort", rejectForCancellation);
+  });
 
   try {
-    return await Promise.race([task, deadline]);
+    return await Promise.race([task, deadline, cancellation]);
   } finally {
     if (timeout) clearTimeout(timeout);
+    removeAbortListener?.();
   }
 }
 
@@ -164,6 +184,7 @@ async function buildPatchForState(
   session: ConversationSession,
   knowledgeSourceIds: readonly string[],
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<CasePatch | undefined> {
   const scope = validationScope(session.context, knowledgeSourceIds);
 
@@ -174,8 +195,9 @@ async function buildPatchForState(
     session.state === "FACT_GATHERING"
   ) {
     const raw = await withDeadline(
-      provider.extractFacts(input, session.context),
+      provider.extractFacts(input, session.context, signal),
       timeoutMs,
+      signal,
     );
     const extraction = validateFactExtraction(raw, scope);
     return {
@@ -190,16 +212,18 @@ async function buildPatchForState(
 
   if (session.state === "ILO_MAPPING") {
     const raw = await withDeadline(
-      provider.mapIndicators(input, session.context),
+      provider.mapIndicators(input, session.context, signal),
       timeoutMs,
+      signal,
     );
     return { iloIndicators: validateIndicatorAssessments(raw, scope) };
   }
 
   if (session.state === "EVIDENCE_COVERAGE") {
     const raw = await withDeadline(
-      provider.summarizeCoverage(input, session.context),
+      provider.summarizeCoverage(input, session.context, signal),
       timeoutMs,
+      signal,
     );
     return { evidenceCoverage: validateEvidenceCoverage(raw, scope) };
   }
@@ -218,7 +242,8 @@ export function createConversationOrchestrator(
   }
 
   return {
-    async handleMessage(input, session) {
+    async handleMessage(input, session, signal) {
+      throwIfCancelled(signal);
       if (input.trim().length === 0 || input.length > MAX_INPUT_CHARACTERS) {
         throw new RangeError("Message length must be between 1 and 10,000 characters");
       }
@@ -228,14 +253,15 @@ export function createConversationOrchestrator(
       }
 
       try {
-        const decision = await withDeadline(options.inputPolicy.prepare(input), timeoutMs);
+        const decision = await withDeadline(options.inputPolicy.prepare(input), timeoutMs, signal);
         if (decision.kind === "confirmation_required") {
           return confirmationTurn();
         }
 
         const rawSafetyFlags = await withDeadline(
-          options.provider.detectSafety(decision.text),
+          options.provider.detectSafety(decision.text, signal),
           timeoutMs,
+          signal,
         );
         const providerSafetyFlags = validateSafetyFlags(rawSafetyFlags);
         if (providerSafetyFlags.length > 0) {
@@ -248,6 +274,7 @@ export function createConversationOrchestrator(
           session,
           knowledgeSourceIds,
           timeoutMs,
+          signal,
         );
         const nextState = transitionTable[session.state];
         const questions = [...questionsByState[nextState]].slice(0, 3);
@@ -262,6 +289,9 @@ export function createConversationOrchestrator(
           ...(draftPatch ? { draftPatch } : {}),
         };
       } catch (error) {
+        if (error instanceof ConversationCancelledError || signal?.aborted) {
+          throw new ConversationCancelledError();
+        }
         if (error instanceof ModelInputConfirmationRequired) {
           return confirmationTurn();
         }

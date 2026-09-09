@@ -14,11 +14,13 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:ai-quality": "vitest run tests/unit/ai-quality-gates.test.ts tests/unit/golden-cases.test.ts",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
     "axe:e2e": "playwright test tests/e2e/accessibility.spec.ts",
     "knowledge:index": "tsx scripts/build-knowledge-index.ts",
+    "worker:materials": "tsx scripts/run-material-processing-worker.ts",
     "db:test:up": "docker compose up -d --wait test-db",
     "db:test:down": "docker compose down --volumes --remove-orphans",
     "prisma:generate": "prisma generate"

@@ -8,6 +8,19 @@
 
 **Tech Stack:** Node.js 22 LTS、Next.js 16 App Router、React 19、TypeScript strict、PostgreSQL 16、Prisma 6、Zod 4、Ajv 8（JSON Schema）、Vitest 4、Playwright 1.62、pnpm 11。AI 通过 provider-neutral adapter 接入，测试默认使用 deterministic mock provider；MVP 不在核心包中安装任何模型厂商 SDK。
 
+## 执行状态（2026-09-04）
+
+- 本地实现已覆盖账户/会话、长期私密案件、对话持久化、材料安全状态机、双模式语音、管理员审核、导出、主动删除和安全文档治理；AI 初审仍只返回工作流状态，不输出评分、概率或法律认定。材料处理 worker 已增加不含敏感标识的六类事件计数、停止摘要和 liveness/readiness 生命周期契约，外部监控与 supervisor 仍属部署门禁。
+- 锁定运行时复验已完成：Node `22.14.0` + pnpm `11.24.0` 下 `install --frozen-lockfile`、lint、typecheck、49 个 Vitest 文件/242 项、14 项 Playwright、axe 和生产构建通过；依赖审计无高危已知漏洞。后续本机回归在系统 Node `25.8.2` + pnpm `9.15.9` 下最新通过 67 个 Vitest 文件/325 项、17 项 Playwright、lint、typecheck 和生产构建，不能替代锁定运行时的发布复验。
+- 对话取消链路已实现并有路由测试：停止生成时 AbortSignal 贯穿编排器到 Gateway。每个尚未开始的持久化副作用前都会检查取消：在首项写入前观察到取消时路由返回 HTTP `499`，不写入 assistant 消息、案件补丁或 `model_fallback` 审计；若取消发生在已开始的数据库操作中，事务自行决定提交或回滚，路由不会启动任何后续写入。用户消息仍可保留。
+- 材料处理的扫描器异常已补充 fail-closed 测试：返回 `error` 或直接抛出异常都会进入 `scan_failed`，不调用解析器、不产生 AI 可用引用，原始材料保留以便安全重试。
+- 材料扫描现在有默认 15 秒超时（可在服务构造时下调，最大 60 秒）；超时同样进入 `scan_failed`，避免扫描进程无限占用处理资源。
+- 本地/staging 加密对象存储第一片已完成：分片写入即 AES-256-GCM 加密，完成时校验大小和 SHA-256，服务端可鉴权解密读取；配置工厂在生产或配置不完整时 fail-closed，服务端分片 PUT/取消受案件/账户归属保护，前端失败时会清理未完成预约。
+- 本地对象版本不可变保护已补齐：已存在的完成对象 key 不允许第二次完成覆盖，完成路由返回版本冲突。
+- CI 已增加独立 PostgreSQL 集成 job 和 Chromium/E2E job；活动分析框架已从“无状态/短期会话”修正为“长期私密档案 + 持续补充”。
+- PostgreSQL 迁移与 16 项集成测试已在隔离的临时本地集群通过，覆盖材料处理持久化队列的幂等、租约回收/续租/归属保护、退避和死信。Gateway 配置现在已由应用 Provider 工厂实际接入：仅在经过严格环境校验后构造 HTTPS Gateway Provider，任何网关配置错误或运行时失败都不会回退至本地 Provider，且 token 不会进入 HTTP 错误响应。仍未完成且继续阻断生产启用：经审查的真实网关端到端演练、多语言人工审阅、真实对象存储/KMS、恶意文件扫描队列、备份恢复与删除清理、OIDC/SSO/MFA、独立安全测试以及外部 worker 指标/告警接入。
+- Git 提交、推送和合并按用户要求保持暂停；本计划中的历史步骤复选框保留为原始执行记录，当前可复核结果以 `docs/operations-runbook.md` 和 `docs/release-gates.md` 为准。
+
 ## Global Constraints
 
 - AI 是主要用户入口，但不能输出“构成强迫劳动”“已经违法”“举报成功率”等法律或结果性结论。
@@ -17,7 +30,7 @@
 - 方案 A 首发范围允许加密保存原始图片、文件和录音；用户主动删除前无默认到期时间，单文件上限 100 MB、单案件上限 2 GB。
 - 文件、录音、转写文本和用户修订稿分开保存；无法解析的材料可保存但不得进入 AI 判断，危险格式必须隔离且不执行。
 - AI 初审结果固定为 `ready_for_preparation | needs_more_information | out_of_scope | safety_referral`，只表示下一步工作流。
-- 管理员可随时查看并独立标注 `intake_rejected | evidence_incomplete | credibility_concern | demonstrably_false`；系统自动记录访问、播放、下载、标注、修改和删除，用户可查阅访问记录。
+- 管理员可随时查看并独立标注 `intake_rejected | evidence_incomplete | credibility_concern | demonstrably_false`；管理员查看、播放和下载不产生应用级访问记录。标注、修改和删除通过不可变的审核版本保留必要的业务历史，用于通知、补充和申诉，而不是用作访问追踪。
 - 支持“语音输入+文字回复”和“实时语音+同步字幕”两种模式；音频原件、转写与编辑稿不可互相覆盖。
 - 法域必须分别记录行为发生地、用户所在地和产品流向地；未确认法域时不得映射具体法条。
 - 暴力、拘禁、自伤、未成年人或人口贩运信号优先进入危机流程，停止常规证据追问。
@@ -91,7 +104,7 @@
 | A5 AI Gateway | 实现供应商中立、可降级的 AI | 本地危机预检、PII 提示、来源追溯、双重 schema 校验 | 校验失败不生成正式初审；模型故障回退静态安全资源 |
 | A6 案件与初审版本 | 支持持续补充与反复初审 | Case/Material/Transcript/ReviewVersion 模型 | 新材料不覆盖历史；四个 AI 状态只驱动工作流 |
 | A7 用户工作台 | 达到 ChatGPT 类使用体验 | 连续消息流、流式/停止/重试/编辑重发、上传和初审卡片 | 桌面/移动可用；WCAG 2.2 AA；不展示结果性结论 |
-| A8 管理员工作台 | 支持默认低频人工审核 | 随时查看、材料播放/下载、四类管理员标注、申诉 | 管理意见独立保存；操作自动审计；用户可查看访问记录 |
+| A8 管理员工作台 | 支持默认低频人工审核 | 随时查看、材料播放/下载、四类管理员标注、申诉 | 管理意见独立保存；查看/播放/下载不留应用级访问记录；标注和改动保留不可变版本 |
 | A9 导出与未来连接器 | 用户控制材料准备与后续接入 | 字段预览、独立同意、Markdown/JSON/PDF、Connector 接口 | 无可验证回执不显示 received；聚合必须明确加入 |
 | A10 生命周期与发布 | 证明删除、备份、审计和恢复可靠 | 删除回执、备份清理、密钥轮换、E2E、可及性与红队报告 | Gate 0/1/2 对应证据齐全，高危失败可回滚 |
 
@@ -1207,9 +1220,9 @@ git commit -m "feat: add AI conversation and private case review"
 - Crisis mode stops normal questions and provides a safe exit.
 - UI never claims a report was sent to an authority.
 
-### Task 6A: Add administrator RBAC, independent review labels, and user-visible access history
+### Task 6A: Add administrator RBAC and independent review labels
 
-**Goal:** 提供默认低频但可随时使用的管理员审核工作台；管理员无需填写查看理由即可复核案件和材料，但不能绕过 RBAC，且所有敏感操作自动审计并向用户展示访问记录。
+**Goal:** 提供默认低频但可随时使用的管理员审核工作台；管理员无需填写查看理由即可复核案件和材料，但不能绕过 RBAC。查看、播放和下载不产生应用级访问记录；管理员的标注、修改和删除则通过独立、不可变的审核版本保留业务历史。
 
 **Dependencies:** Tasks 5C and 6。
 
@@ -1220,16 +1233,14 @@ git commit -m "feat: add AI conversation and private case review"
 - Create: `src/server/admin/rbac.ts`
 - Create: `src/server/admin/admin-case-service.ts`
 - Create: `src/server/repositories/admin-review-repository.ts`
-- Modify: `src/server/audit.ts`
 - Create: `src/app/(admin)/admin/cases/page.tsx`
 - Create: `src/app/(admin)/admin/cases/[caseId]/page.tsx`
 - Create: `src/app/api/admin/cases/route.ts`
 - Create: `src/app/api/admin/cases/[caseId]/route.ts`
+- Create: `src/app/api/admin/cases/[caseId]/changes/route.ts`
 - Create: `src/app/api/admin/cases/[caseId]/materials/[materialId]/download/route.ts`
 - Create: `src/app/api/admin/cases/[caseId]/reviews/route.ts`
-- Create: `src/app/api/cases/[caseId]/access-history/route.ts`
 - Create: `src/components/admin/admin-case-review.tsx`
-- Create: `src/components/case-review/access-history.tsx`
 - Create: `tests/integration/admin-review.test.ts`
 - Create: `tests/e2e/admin-review.spec.ts`
 
@@ -1255,24 +1266,14 @@ export interface AdminReviewVersion {
   createdAt: string;
 }
 
-export type AdminAuditAction =
-  | "admin_case_view"
-  | "admin_material_play"
-  | "admin_material_download"
-  | "admin_review_create"
-  | "admin_review_update"
-  | "admin_case_modify"
-  | "admin_case_delete";
 ```
 
-- [ ] **Step 1: Write failing authorization, review-separation, and audit tests**
+- [ ] **Step 1: Write failing authorization and review-separation tests**
 
 ```ts
-it("allows an authorized reviewer to view without a reason and records the access", async () => {
+it("allows an authorized reviewer to view without a reason and creates no access record", async () => {
   await adminCaseService.getCase({ adminId: "reviewer-a", caseId: "case-a" });
-  expect(await auditRepository.findForCase("case-a")).toContainEqual(
-    expect.objectContaining({ action: "admin_case_view", actorId: "reviewer-a" }),
-  );
+  expect(await auditRepository.findForCase("case-a")).toEqual([]);
 });
 
 it("requires two distinct reviewers for demonstrably_false", async () => {
@@ -1281,7 +1282,7 @@ it("requires two distinct reviewers for demonstrably_false", async () => {
 });
 ```
 
-覆盖未登录/普通用户/错误角色拒绝、直接猜测 material ID 不可下载、列表与详情均受 RBAC、播放/下载/标注/修改/删除自动审计、管理员意见不覆盖用户陈述或 AI ReviewVersion、四类状态枚举、`demonstrably_false` 反证来源和二次复核、用户只能查看自己案件的访问历史。
+覆盖未登录/普通用户/错误角色拒绝、直接猜测 material ID 不可下载、列表与详情均受 RBAC、查看/播放/下载不生成应用级访问记录、标注/修改/删除生成独立不可变审核版本、管理员意见不覆盖用户陈述或 AI ReviewVersion、四类状态枚举，以及 `demonstrably_false` 的反证来源和二次复核。
 
 - [ ] **Step 2: Run admin tests before implementation**
 
@@ -1295,19 +1296,19 @@ pnpm db:test:down
 Remove-Item Env:DATABASE_URL
 ```
 
-Expected: FAIL because admin identity, RBAC, review versions, admin routes, and audit actions do not exist.
+Expected: FAIL because admin identity, RBAC, review versions, and admin routes do not exist.
 
 - [ ] **Step 3: Implement server-enforced RBAC and unrestricted-in-time review access**
 
-Authenticate administrators separately from pseudonymous users, store only stable internal actor IDs in audits, and authorize every list/detail/play/download/review/modify/delete request in the service layer. `case_reviewer` may list, view, play/download and create ordinary review versions; `case_supervisor` is additionally required for destructive changes and second review. Access is available at any time and no reason prompt is required, but there is no anonymous/shared admin credential, URL-only authorization, bypass endpoint, or public object-store URL. Default-low-frequency is an operational expectation, not a weaker permission or audit rule.
+Authenticate administrators separately from pseudonymous users and authorize every list/detail/play/download/review/modify/delete request in the service layer. `case_reviewer` may list, view, play/download and create ordinary review versions; `case_supervisor` is additionally required for destructive changes and second review. Access is available at any time and no reason prompt is required, but there is no anonymous/shared admin credential, URL-only authorization, bypass endpoint, or public object-store URL. Default-low-frequency is an operational expectation, not a weaker permission rule. Do not create an application-level event for a successful or denied view, play, download, or list operation.
 
 - [ ] **Step 4: Implement independent review versions and user recourse**
 
 Persist admin review versions separately from `CaseRecord`, user statements, material versions, transcripts, and AI review versions. `intake_rejected` covers duplicate/spam/test/out-of-scope/user-withdrawn intake; `evidence_incomplete` never means false; `credibility_concern` requires a documented inconsistency/source reference; `demonstrably_false` requires reproducible counter-evidence and a distinct supervisor's second review. New reviews supersede but never overwrite prior versions. Notify the user of review status, allow continued material submission, and expose an appeal/reconsideration link; Task 9 owns the full appeal lifecycle and deletion/retention effects.
 
-- [ ] **Step 5: Implement automatic audit and user-visible access history**
+- [ ] **Step 5: Preserve review history without access tracking**
 
-Write an audit event before returning sensitive case content or issuing a short-lived material playback/download grant. Record actor ID, case/material ID, action, UTC timestamp, outcome, and request correlation hash—never the material contents, narrative, IP/device identifier, or credentials. Viewing requires no reason field. Expose a paginated owner-only access-history endpoint and UI listing access/play/download/label/modify/delete time and action in plain language. Audit write failure is fail-closed for reads/downloads/changes, except a documented emergency static-resource path that never accesses a case.
+Do not write an application-level audit event before returning case content or issuing a short-lived material playback/download grant, and do not create an access-history endpoint or UI. Viewing requires no reason field. A review label, case modification, or deletion creates a new immutable `AdminReviewVersion` (with actor ID, UTC time, review status, rationale and source references) because it changes the case's review state and must support notification, continued supplementation and appeal. This review history must not contain view/play/download events, request correlation data, IP/device identifiers, credentials, raw narrative or material bytes.
 
 - [ ] **Step 6: Run integration, E2E, and policy checks**
 
@@ -1324,21 +1325,21 @@ pnpm db:test:down
 Remove-Item Env:DATABASE_URL
 ```
 
-Expected: PASS; unauthorized requests receive enumeration-safe 404/403 responses, every successful sensitive action has an audit event, users see only their own access history, review versions remain independent, and `demonstrably_false` cannot be created by one reviewer.
+Expected: PASS; unauthorized requests receive enumeration-safe 404/403 responses, view/play/download create no application-level access records, review versions remain independent, and `demonstrably_false` cannot be created by one reviewer.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add prisma src/domain/admin-review.ts src/server/admin src/server/repositories/admin-review-repository.ts src/server/audit.ts src/app/\(admin\) src/app/api/admin src/app/api/cases src/components/admin src/components/case-review/access-history.tsx tests/integration/admin-review.test.ts tests/e2e/admin-review.spec.ts
+git add prisma src/domain/admin-review.ts src/server/admin src/server/repositories/admin-review-repository.ts src/app/\(admin\) src/app/api/admin src/components/admin tests/integration/admin-review.test.ts tests/e2e/admin-review.spec.ts
 git commit -m "feat: add audited administrator case review"
 ```
 
 **Acceptance Criteria:**
 
-- Authorized administrators can review cases and original materials at any time without selecting or entering a view reason.
+- Authorized administrators can review cases and original materials at any time without selecting or entering a view reason, and without application-level access tracking.
 - RBAC is enforced server-side for list, view, play, download, label, modify, and delete operations.
 - Admin review labels use exactly the four approved statuses, remain independent, retain history, and support notification, supplementation, and appeal.
-- Every sensitive admin action is automatically audited; users can inspect access history for their own cases.
+- Review labels, modifications and deletions retain immutable review history for notification and appeal; simple access actions are not recorded.
 
 ### Task 7: Implement qualitative evidence coverage and legal/channel navigation
 
@@ -1616,9 +1617,6 @@ export interface AuditEvent {
     | "material_view"
     | "material_play"
     | "material_download"
-    | "admin_case_view"
-    | "admin_material_play"
-    | "admin_material_download"
     | "admin_review_create"
     | "admin_review_update"
     | "admin_case_modify"
@@ -1629,7 +1627,7 @@ export interface AuditEvent {
 }
 ```
 
-- [ ] **Step 1: Write privacy control tests**
+- [x] **Step 1: Write privacy control tests**
 
 ```ts
 it("deletion queues encrypted objects, transcripts, wrapped keys, and backups", async () => {
@@ -1645,28 +1643,28 @@ it("deletion receipt lists primary and queued cleanup targets", async () => {
 });
 ```
 
-- [ ] **Step 2: Run tests before implementation**
+- [x] **Step 2: Run tests before implementation**
 
 Run: `pnpm db:test:up; pnpm test:integration -- tests/integration/privacy-controls.test.ts`
 Expected: FAIL because privacy services and delete route are missing; then run `pnpm db:test:down`.
 
-- [ ] **Step 3: Implement PII hints and explicit user confirmation**
+- [x] **Step 3: Implement PII hints and explicit user confirmation**
 
 Detect likely phone, email, identity-document, and precise-address patterns with locale-aware regexes that return only `PersonalDataHint` spans and masked previews. Show a confirmation prompt with “保留原文 / 使用脱敏版本 / 删除该片段”; do not silently rewrite the user’s narrative. Store only the user-confirmed version and retain the hint decision in the consent event, never the discarded raw span.
 
-- [ ] **Step 4: Implement deletion and retention jobs**
+- [x] **Step 4: Implement deletion and retention jobs**
 
 `deleteCase()` runs a transaction that marks the case deleted, revokes active upload/playback/download grants, and appends idempotent `CleanupJob` rows for material metadata, encrypted object versions, transcript versions, wrapped data keys, search index, cache, and backup queue; it returns a signed `DeletionReceipt`. All user/admin repository reads exclude deleted records immediately and cleanup workers are safe to retry. Object deletion and wrapped-key destruction are separately verified; backup tombstones prevent deleted data from being restored into active storage. The receipt explicitly says external systems are not applicable until a connector has separately shared data; never claim deletion from systems outside platform control.
 
 Implement KEK/KMS key-version rotation as a resumable re-wrap job: decrypt data keys only inside the key service, write the new wrapped-key version, verify a sample decrypt/hash, then retire the old version after a documented rollback window. Rotation never rewrites plaintext objects and failures retain the last readable wrapped-key version. Add quarterly restore-and-delete drills covering primary DB, object store, replicas, caches, search indexes, and backups.
 
-- [ ] **Step 5: Implement audit and degraded-mode logging**
+- [x] **Step 5: Implement audit and degraded-mode logging**
 
-Audit user and administrator create/update/export-preview/export/delete, consent changes, material view/play/download, admin labels, admin modifications, and model fallback with the `AuditEvent` shape, without IP/device identifiers, credentials, raw narrative, source quotes, or full field values. Hash request IDs with a per-deployment salt only for correlation. When AI or knowledge retrieval fails, expose `degraded: true`, a machine-readable `reasonCode`, and static crisis/legal resources; never present partial model output as saved or submitted. Audit failure is fail-closed for sensitive material/admin operations.
+Audit user create/update/export-preview/export/delete, consent changes, user-initiated material view/play/download, and model fallback with the `AuditEvent` shape, without IP/device identifiers, credentials, raw narrative, source quotes, or full field values. Do not audit administrator list/view/play/download requests or create access history for them. Administrator labels, modifications and deletions are retained only as immutable `AdminReviewVersion` history needed for notice and appeal, not as access tracking. Hash request IDs with a per-deployment salt only for the user-facing audit events. When AI or knowledge retrieval fails, expose `degraded: true`, a machine-readable `reasonCode`, and static crisis/legal resources; never present partial model output as saved or submitted. Audit failure is fail-closed for user-sensitive material operations, while administrator read authorization relies on RBAC without writing an audit event.
 
 The owner-only appeal endpoint binds an appeal to an existing `AdminReviewVersion`, accepts a user statement and already-owned supporting material IDs, and never mutates that review version. Submission creates a new audit event, notifies the review queue, and leaves the case open for further materials and AI review versions. Resolution is a new admin review/appeal event, never an overwrite.
 
-- [ ] **Step 6: Run tests and security checks**
+- [x] **Step 6: Run tests and security checks**
 
 Run:
 
@@ -1733,7 +1731,7 @@ Cover these exact scenarios with stable `data-testid` hooks and independent fixt
 9. A static-mode deployment neither calls the model nor writes a case.
 10. A material upload enforces 100 MB/2 GB atomic quotas; unsupported clean files remain `saved_unread`; quarantined/blocked material never reaches AI.
 11. Both voice modes preserve immutable audio/transcript/revision versions; interruption and reconnect are recoverable.
-12. Admin review actions require RBAC, create independent four-state versions, and are visible in owner access history.
+12. Admin review actions require RBAC and create independent four-state versions; administrator read, play and download actions create no application-level access history.
 13. Golden cases cover simplified Chinese, English, one additional pilot locale, mixed-language input, information-insufficient input, and prompt-injection attempts; unsupported locales disclose the fallback language instead of silently mistranslating.
 
 - [ ] **Step 2: Run the complete test suite**
