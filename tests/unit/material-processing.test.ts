@@ -260,6 +260,48 @@ describe("material quarantine and parsing", () => {
     ).rejects.toThrow("MATERIAL_PARSER_TIMEOUT");
   });
 
+  it("keeps parser input above the configured limit unread and out of AI", async () => {
+    const state = makeRepository();
+    let parserCalls = 0;
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([{
+        id: "pdf-parser",
+        supports: (signature) => signature.detectedMime === "application/pdf",
+        parse: async () => {
+          parserCalls += 1;
+          return { contentRef: "derived/too-large", text: "must not run" };
+        },
+      }]),
+      { parserMaxInputBytes: 4 },
+    );
+
+    const result = await service.process({ materialId: "material-a", ...cleanPdf, scanner: cleanScanner });
+
+    expect(result.processingState).toBe("saved_unread");
+    expect(result.eligibleForAi).toBe(false);
+    expect(parserCalls).toBe(0);
+  });
+
+  it("keeps parser output above the configured limit unread and out of AI", async () => {
+    const state = makeRepository();
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([{
+        id: "pdf-parser",
+        supports: (signature) => signature.detectedMime === "application/pdf",
+        parse: async () => ({ contentRef: "derived/too-large", text: "12345" }),
+      }]),
+      { parserMaxOutputCharacters: 4 },
+    );
+
+    const result = await service.process({ materialId: "material-a", ...cleanPdf, scanner: cleanScanner });
+
+    expect(result.processingState).toBe("saved_unread");
+    expect(result.eligibleForAi).toBe(false);
+    await expect(state.repository.listAiEligibleContentRefs("material-a")).resolves.toEqual([]);
+  });
+
   it("does not duplicate a derivative when the same parser job is retried", async () => {
     const state = makeRepository();
     const service = new MaterialProcessingService(

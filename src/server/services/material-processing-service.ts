@@ -1,16 +1,23 @@
 import {
   assertMaterialProcessingTransition,
+  MAX_MATERIAL_BYTES,
   type MaterialProcessingRecord,
   type MaterialProcessingState,
 } from "@/domain/material";
 import { ParserRegistry } from "@/media/parsers/parser-registry";
+import { SafeExtractionWorker } from "@/media/parsers/safe-extraction-worker";
 import { detectFileSignature } from "@/media/security/file-signature";
 import type { MalwareScanner } from "@/media/security/malware-scanner";
 
 const DEFAULT_SCANNER_TIMEOUT_MS = 15_000;
+const DEFAULT_PARSER_TIMEOUT_MS = 15_000;
+const DEFAULT_PARSER_MAX_OUTPUT_CHARACTERS = 1_000_000;
 
 export interface MaterialProcessingServiceOptions {
   scannerTimeoutMs?: number;
+  parserTimeoutMs?: number;
+  parserMaxInputBytes?: number;
+  parserMaxOutputCharacters?: number;
 }
 
 export interface MaterialProcessingRepository {
@@ -26,6 +33,7 @@ export interface MaterialProcessingRepository {
 
 export class MaterialProcessingService {
   private readonly scannerTimeoutMs: number;
+  private readonly extractionWorker: SafeExtractionWorker;
 
   constructor(
     private readonly repository: MaterialProcessingRepository,
@@ -37,6 +45,23 @@ export class MaterialProcessingService {
       throw new TypeError("scannerTimeoutMs must be an integer between 1 and 60000 milliseconds");
     }
     this.scannerTimeoutMs = scannerTimeoutMs;
+    const parserTimeoutMs = options.parserTimeoutMs ?? DEFAULT_PARSER_TIMEOUT_MS;
+    if (!Number.isInteger(parserTimeoutMs) || parserTimeoutMs <= 0 || parserTimeoutMs > 60_000) {
+      throw new TypeError("parserTimeoutMs must be an integer between 1 and 60000 milliseconds");
+    }
+    const parserMaxInputBytes = options.parserMaxInputBytes ?? MAX_MATERIAL_BYTES;
+    if (!Number.isSafeInteger(parserMaxInputBytes) || parserMaxInputBytes <= 0) {
+      throw new TypeError("parserMaxInputBytes must be a positive safe integer");
+    }
+    const parserMaxOutputCharacters = options.parserMaxOutputCharacters ?? DEFAULT_PARSER_MAX_OUTPUT_CHARACTERS;
+    if (!Number.isSafeInteger(parserMaxOutputCharacters) || parserMaxOutputCharacters <= 0) {
+      throw new TypeError("parserMaxOutputCharacters must be a positive safe integer");
+    }
+    this.extractionWorker = new SafeExtractionWorker({
+      timeoutMs: parserTimeoutMs,
+      maxInputBytes: parserMaxInputBytes,
+      maxOutputCharacters: parserMaxOutputCharacters,
+    });
   }
 
   async process(input: {
@@ -87,7 +112,10 @@ export class MaterialProcessingService {
     }
     const queued = await this.transition(scanning, "parse_queued", { eligibleForAi: false });
     try {
-      const derivative = await parser.parse({ bytes: input.bytes, signature });
+      const derivative = await this.extractionWorker.runExtraction(
+        { bytes: input.bytes },
+        () => parser.parse({ bytes: input.bytes, signature }),
+      );
       await this.repository.addDerivative({
         contentRef: derivative.contentRef,
         sourceMaterialId: input.materialId,
