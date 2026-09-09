@@ -13,6 +13,7 @@
 - 已完成门禁测试、聚合器、`pnpm test:ai-quality` 命令和独立 Actions job。
 - 本机直接调用已安装二进制验证：质量门禁 12/12、全量单元测试 70 文件/340 项、法域导航 Playwright 2 项、lint、typecheck、生产构建均通过。
 - 本机 Node 25.8.2 / pnpm 9.15.9 不满足项目锁定值；锁定运行时的最终证据以 GitHub Actions 为准。
+- 提交 `529a390` 的锁定运行时远程 CI 已通过：[Actions run 34309785468](https://github.com/ZxWang-AI/manbo/actions/runs/34309785468)。
 
 ## Global Constraints
 

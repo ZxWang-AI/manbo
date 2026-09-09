@@ -21,6 +21,8 @@ pnpm test:ai-quality
 
 该命令只报告内部门禁的通过/失败，不计算或展示用户-facing 分数、概率或案件结论。
 
+锁定运行时的远程证据：提交 `529a390` 对应 [GitHub Actions run 34309785468](https://github.com/ZxWang-AI/manbo/actions/runs/34309785468)，`AI quality gates`、Verify、PostgreSQL integration 和 Browser/accessibility 全部通过。
+
 ## 2. 基线结果
 
 | 场景 | 预期 | 当前结果 | 证据 |
