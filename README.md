@@ -37,6 +37,7 @@ Manbo 不替官方机构调查或认定，不提供法律意见、心理治疗�
 | [`docs/analysis-framework.md`](docs/analysis-framework.md) | Phase 1 分析框架、数据需求、来源状态与后续研究任务 |
 | [`docs/risk-register.md`](docs/risk-register.md) | 人身安全、隐私、诽谤、AI、供应商与运维风险登记册 |
 | [`docs/release-gates.md`](docs/release-gates.md) | MVP、证据托管、公开聚合和 API 的发布门禁 |
+| [`docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md`](docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md) | Proxmox 家庭服务器私有 staging 部署、HTTPS、systemd、备份和 GitHub Actions 计划 |
 | [`docs/superpowers/specs/2026-08-31-safe-documentation-governance-design.md`](docs/superpowers/specs/2026-08-31-safe-documentation-governance-design.md) | 本次文档与治理设计规格 |
 | [`knowledge-base/`](knowledge-base/) | 供未来 agent 使用的定义、法律、执法、判断、渠道和沟通资料 |
 | [`knowledge-base/AGENT-GUIDE.md`](knowledge-base/AGENT-GUIDE.md) | 检索、引用、危机处理、拒答和数据边界 |
@@ -65,7 +66,7 @@ Manbo 不替官方机构调查或认定，不提供法律意见、心理治疗�
 
 ## 部署
 
-GitHub 用于源码审查和 Actions 自动化，Vercel 用于 Next.js 运行环境，PostgreSQL 用于持久化。GitHub Pages 只适合展示 `prototype/` 静态原型，不能承载真实案件、AI、语音或材料托管。生产部署配置见 [`docs/deployment.md`](docs/deployment.md)；推送到 `main` 会先执行 CI 和 Prisma 迁移，迁移失败时不会发布应用。所有数据库、Vercel、AI Gateway 和会话密钥都必须通过平台 Secrets 配置，禁止提交到仓库。
+GitHub 用于源码审查和 Actions 自动化；运行环境可以是 Vercel，也可以是按 [`docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md`](docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md) 配置的 Proxmox 私有 staging。GitHub Pages 只适合展示 `prototype/` 静态原型，不能承载真实案件、AI、语音或材料托管。生产部署配置见 [`docs/deployment.md`](docs/deployment.md)；推送到 `main` 会先执行 CI 和 Prisma 迁移，迁移失败时不会发布应用。所有数据库、Vercel、AI Gateway 和会话密钥都必须通过平台 Secrets 配置，禁止提交到仓库。
 
 ## 重要声明
 

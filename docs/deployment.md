@@ -2,6 +2,8 @@
 
 本仓库把 GitHub 作为源码、审查和自动化中心，把 Vercel 作为 Next.js 运行环境，把 PostgreSQL 作为持久化数据库。GitHub Pages 只能承载静态原型，不能运行案件、AI、语音或材料托管服务。
 
+如果没有 Vercel，可以使用 Proxmox 中的独立 Ubuntu VM 运行私有 staging。完整的无 Docker、systemd、Caddy、PostgreSQL、VPN 和后续 GitHub Actions 方案见 [`docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md`](superpowers/plans/2026-09-09-home-server-proxmox-deployment.md)。该方案默认不开放公网，也不允许在 Gate 1/2 完成前接收真实举报材料。
+
 ## 部署前提
 
 - GitHub 账号对仓库有 `Write` 或更高权限。
