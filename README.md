@@ -66,7 +66,7 @@ Manbo 不替官方机构调查或认定，不提供法律意见、心理治疗�
 
 ## 部署
 
-GitHub 用于源码审查和 Actions 自动化；运行环境可以是 Vercel，也可以是按 [`docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md`](docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md) 配置的 Proxmox 私有 staging。GitHub Pages 只适合展示 `prototype/` 静态原型，不能承载真实案件、AI、语音或材料托管。生产部署配置见 [`docs/deployment.md`](docs/deployment.md)；推送到 `main` 会先执行 CI 和 Prisma 迁移，迁移失败时不会发布应用。所有数据库、Vercel、AI Gateway 和会话密钥都必须通过平台 Secrets 配置，禁止提交到仓库。
+GitHub 用于源码审查和 Actions 自动化；运行环境可以是手动启用的 Vercel，也可以是按 [`docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md`](docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md) 配置的 Proxmox 私有 staging。GitHub Pages 只适合展示 `prototype/` 静态原型，不能承载真实案件、AI、语音或材料托管。生产部署配置见 [`docs/deployment.md`](docs/deployment.md)；合并到 `main` 会自动运行 CI，但当前不会自动部署。Vercel workflow 仅供手动触发，家庭服务器自动发布会在 VM 和安全通道完成后另行启用。所有数据库、Vercel、AI Gateway 和会话密钥都必须通过平台 Secrets 配置，禁止提交到仓库。
 
 ## 重要声明
 

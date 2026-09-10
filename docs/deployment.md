@@ -1,6 +1,6 @@
 # 部署指南
 
-本仓库把 GitHub 作为源码、审查和自动化中心，把 Vercel 作为 Next.js 运行环境，把 PostgreSQL 作为持久化数据库。GitHub Pages 只能承载静态原型，不能运行案件、AI、语音或材料托管服务。
+本仓库把 GitHub 作为源码、审查和自动化中心，把 PostgreSQL 作为持久化数据库。Vercel 是可选的手动部署流程；当前选择的运行目标是 Proxmox 私有 staging，但在服务器初始化和发布通道完成前，当前没有配置自动部署目标。GitHub Pages 只能承载静态原型，不能运行案件、AI、语音或材料托管服务。
 
 如果没有 Vercel，可以使用 Proxmox 中的独立 Ubuntu VM 运行私有 staging。完整的无 Docker、systemd、Caddy、PostgreSQL、VPN 和后续 GitHub Actions 方案见 [`docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md`](superpowers/plans/2026-09-09-home-server-proxmox-deployment.md)。该方案默认不开放公网，也不允许在 Gate 1/2 完成前接收真实举报材料。
 
@@ -28,9 +28,9 @@
 
 本机若默认 Node/pnpm 版本不匹配，使用 Node `22.14.0` 和 Corepack pnpm `11.24.0`；不得以旧版 pnpm 绕过 `engines` 约束。
 
-### 生产部署
+### 可选的 Vercel 生产部署
 
-`.github/workflows/deploy-vercel.yml` 在 push 到 `main` 时运行，也支持手动触发。push 到 `main` 会先执行 `prisma migrate deploy`，迁移失败时不会部署应用。手动触发默认不执行迁移；如确实需要迁移，勾选 `run_migrations`。
+`.github/workflows/deploy-vercel.yml` 仅支持从 GitHub Actions 页面手动触发，不会因 push 到 `main` 自动运行。手动触发默认不执行迁移；如确实需要迁移，勾选 `run_migrations`。迁移失败时不会部署应用。没有配置下列 Vercel 和数据库 Secrets 时不要运行该 workflow。
 
 在仓库 `Settings → Environments → production → Environment secrets` 中配置：
 
@@ -80,7 +80,7 @@ MATERIAL_SECURITY_GATEWAY_MAX_RESPONSE_BYTES=2097152
 3. 将应用运行时变量加入 Vercel Production Environment。
 4. 在 GitHub Actions 手动运行 `Deploy production to Vercel`，首次选择 `run_migrations=true`，并确认生产 Environment 审批。
 5. 检查 Actions 中迁移和部署均成功，再打开 Vercel 生成的域名。
-6. 后续合并到 `main` 会自动运行 CI、迁移和部署；迁移失败会阻止部署。
+6. 后续合并到 `main` 只会自动运行 CI；需要发布到 Vercel 时，由有权限的维护者再次手动运行该 workflow。
 
 ### 材料 worker 部署前检查
 

@@ -1,9 +1,6 @@
 name: Deploy production to Vercel
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       run_migrations:
@@ -22,7 +19,7 @@ permissions:
 jobs:
   migrate:
     name: Apply database migrations
-    if: ${{ github.event_name == 'push' || inputs.run_migrations == true }}
+    if: ${{ inputs.run_migrations == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
