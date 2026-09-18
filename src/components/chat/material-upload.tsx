@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ProcessingStatus, type MaterialUiState } from "./processing-status";
 import { MaterialUploadClientError, uploadMaterialFile, type MaterialUploadStage } from "./material-upload-client";
 import { createLocalMaterialPreview, MAX_LOCAL_MATERIAL_BYTES, scheduleMaterialRefresh } from "./material-upload-state";
+import type { MaterialSourceLabel } from "../case-review/source-trace";
 
 interface MaterialItem {
   id: string;
@@ -15,6 +16,8 @@ interface MaterialItem {
   materialId?: string;
   retryRequested?: boolean | undefined;
   error?: string | undefined;
+  aiContentRefs: string[];
+  selectedForAi?: boolean | undefined;
 }
 
 interface MaterialSummary {
@@ -22,9 +25,18 @@ interface MaterialSummary {
   originalFilename: string | null;
   declaredBytes: number;
   processingState: string;
+  aiContentRefs: string[];
+}
+
+export function collectSelectedContentRefs(
+  materials: ReadonlyArray<{ selectedForAi?: boolean | undefined; aiContentRefs: readonly string[] }>,
+): string[] {
+  return [...new Set(materials.flatMap((material) => material.selectedForAi ? material.aiContentRefs : []))];
 }
 
 const retryableStates = new Set<MaterialUiState>(["quarantined", "saved_unread", "scan_failed"]);
+const processingStates = new Set<MaterialUiState>(["uploading", "scanning", "parse_queued"]);
+const MATERIAL_REFRESH_INTERVAL_MS = 3_000;
 
 export function readMaterialSummaries(payload: unknown): MaterialSummary[] | null {
   if (!payload || typeof payload !== "object" || !Array.isArray((payload as { materials?: unknown }).materials)) return null;
@@ -38,11 +50,19 @@ export function readMaterialSummaries(payload: unknown): MaterialSummary[] | nul
       (item.declaredBytes as number) <= 0 ||
       typeof item.processingState !== "string"
     ) return [];
+    const aiContentRefs = item.aiContentRefs === undefined
+      ? []
+      : Array.isArray(item.aiContentRefs)
+        && item.aiContentRefs.every((ref) => typeof ref === "string" && /^derived\/[A-Za-z0-9._-]{1,160}$/u.test(ref))
+        ? item.aiContentRefs as string[]
+        : null;
+    if (!aiContentRefs) return [];
     return [{
       materialId: item.materialId,
       originalFilename: item.originalFilename as string | null,
       declaredBytes: item.declaredBytes as number,
       processingState: item.processingState,
+      aiContentRefs,
     }];
   });
   return summaries.length === (payload as { materials: unknown[] }).materials.length ? summaries : null;
@@ -66,14 +86,36 @@ function toMaterialUiState(processingState: string): MaterialUiState {
 export function MaterialUpload({
   caseId,
   onPendingChange,
+  onAiContentRefsChange,
+  onMaterialSourcesChange,
 }: {
   caseId?: string | undefined;
   onPendingChange?: (pending: boolean) => void;
+  onAiContentRefsChange?: (contentRefs: string[]) => void;
+  onMaterialSourcesChange?: (sources: MaterialSourceLabel[]) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const uploadingIdsRef = useRef(new Set<string>());
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
   const [error, setError] = useState<string>();
+  const hasProcessingPending = materials.some((material) => processingStates.has(material.state));
+  // Keep the derived array referentially stable while the material state is
+  // unchanged. The parent receives it from an effect; returning a fresh array
+  // on every render would cause that effect to update the parent forever.
+  const selectedContentRefs = useMemo(() => collectSelectedContentRefs(materials), [materials]);
+  const materialSources = useMemo(() => {
+    const sources = new Map<string, MaterialSourceLabel>();
+    for (const material of materials) {
+      for (const contentRef of material.aiContentRefs) {
+        sources.set(contentRef, {
+          contentRef,
+          name: material.name,
+          state: material.state,
+        });
+      }
+    }
+    return [...sources.values()];
+  }, [materials]);
 
   function updateMaterial(id: string, patch: Partial<MaterialItem>) {
     setMaterials((current) => current.map((material) => material.id === id ? { ...material, ...patch } : material));
@@ -89,13 +131,26 @@ export function MaterialUpload({
       setMaterials((current) => {
         const serverMaterialIds = new Set(summaries.map(({ materialId }) => materialId));
         const localOnly = current.filter((material) => !material.materialId || !serverMaterialIds.has(material.materialId));
-        const refreshed = summaries.map((summary): MaterialItem => ({
-          id: summary.materialId,
-          materialId: summary.materialId,
-          name: summary.originalFilename ?? "未命名材料",
-          size: summary.declaredBytes,
-          state: toMaterialUiState(summary.processingState),
-        }));
+        const refreshed = summaries.map((summary): MaterialItem => {
+          const previous = current.find((item) => item.materialId === summary.materialId);
+          const state = toMaterialUiState(summary.processingState);
+          // A retry acknowledgement can race with the first poll, which may
+          // still return the pre-retry state. Keep the acknowledgement while
+          // the server reports a retryable or in-progress state, but clear it
+          // once processing reaches a terminal/non-retryable state.
+          const retryRequested = previous?.retryRequested === true
+            && (retryableStates.has(state) || processingStates.has(state));
+          return {
+            id: summary.materialId,
+            materialId: summary.materialId,
+            name: summary.originalFilename ?? "未命名材料",
+            size: summary.declaredBytes,
+            state,
+            aiContentRefs: summary.aiContentRefs,
+            selectedForAi: previous?.selectedForAi === true && summary.aiContentRefs.length > 0,
+            ...(retryRequested ? { retryRequested: true } : {}),
+          };
+        });
         return [...localOnly, ...refreshed];
       });
     } catch {
@@ -149,12 +204,24 @@ export function MaterialUpload({
   }, [caseId]);
 
   useEffect(() => {
-    onPendingChange?.(materials.some((material) => material.state === "uploading" || material.state === "scanning"));
-  }, [materials, onPendingChange]);
+    onPendingChange?.(hasProcessingPending);
+  }, [hasProcessingPending, onPendingChange]);
 
   useEffect(() => {
-    return scheduleMaterialRefresh(() => { void refreshMaterials(); });
-  }, [refreshMaterials]);
+    onAiContentRefsChange?.(selectedContentRefs);
+  }, [onAiContentRefsChange, selectedContentRefs]);
+
+  useEffect(() => {
+    onMaterialSourcesChange?.(materialSources);
+  }, [materialSources, onMaterialSourcesChange]);
+
+  useEffect(() => {
+    if (!caseId) return;
+    return scheduleMaterialRefresh(
+      () => { void refreshMaterials(); },
+      hasProcessingPending ? { intervalMs: MATERIAL_REFRESH_INTERVAL_MS } : undefined,
+    );
+  }, [caseId, hasProcessingPending, refreshMaterials]);
 
   useEffect(() => {
     if (!caseId) return;
@@ -176,7 +243,7 @@ export function MaterialUpload({
         lastModified: file.lastModified,
         index: materials.length + index,
       });
-      return { ...preview, file };
+      return { ...preview, file, aiContentRefs: [] };
     });
     setMaterials((current) => [...current, ...next]);
     if (next.some((item) => item.size > MAX_LOCAL_MATERIAL_BYTES)) {
@@ -219,6 +286,20 @@ export function MaterialUpload({
                 <strong>{material.name}</strong>
                 <span>{(material.size / 1024 / 1024).toFixed(1)} MB</span>
                 {material.error ? <span className="inline-error" role="alert">{material.error}</span> : null}
+                {material.state === "parsed" && material.aiContentRefs.length > 0 ? (
+                  <label className="material-ai-toggle">
+                    <input
+                      type="checkbox"
+                      checked={material.selectedForAi === true}
+                      aria-label={`将${material.name}用于本轮 AI`}
+                      onChange={(event) => {
+                        const selected = event.target.checked;
+                        updateMaterial(material.id, { selectedForAi: selected });
+                      }}
+                    />
+                    用于本轮 AI（仅发送安全解析文本）
+                  </label>
+                ) : null}
               </div>
               <div className="material-item__actions">
                 <ProcessingStatus state={material.state} />

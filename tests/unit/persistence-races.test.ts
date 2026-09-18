@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import argon2 from "argon2";
 import { describe, expect, it, vi } from "vitest";
 
@@ -57,6 +57,141 @@ describe("private case write races", () => {
         { role: "user", content: "A user-controlled statement" },
       ),
     ).rejects.toBeInstanceOf(PrivateCaseUnavailable);
+  });
+
+  it("rejects a retry response when a concurrent user append wins the shared case lock", async () => {
+    const accountId = "a".repeat(32);
+    const caseId = "36ee7b31-8590-4afe-995e-0e360714d647";
+    const originalUserMessageId = "68ae7962-d73c-4832-b736-c3dfe93b3d16";
+    const newerUserMessageId = "68ae7962-d73c-4832-b736-c3dfe93b3d17";
+    const assistantMessageId = "68ae7962-d73c-4832-b736-c3dfe93b3d18";
+    interface StoredMessage {
+      messageId: string;
+      accountId: string;
+      caseId: string;
+      messageSequence: number;
+      role: "user" | "assistant";
+      content: string;
+      createdAt: Date;
+    }
+    interface FindFirstQuery {
+      where: { accountId: string; caseId: string; role?: "user" };
+      orderBy: { messageSequence: "desc" };
+      select: { messageId?: true; messageSequence?: true };
+    }
+    const storedMessages: StoredMessage[] = [{
+      messageId: originalUserMessageId,
+      accountId,
+      caseId,
+      messageSequence: 1,
+      role: "user" as const,
+      content: "原始消息",
+      createdAt: new Date("2026-09-17T00:00:00.000Z"),
+    }];
+    const findFirstQueries: FindFirstQuery[] = [];
+    let releaseFirstCreate = () => {};
+    const firstCreateMayFinish = new Promise<void>((resolve) => {
+      releaseFirstCreate = resolve;
+    });
+    let announceFirstCreate = () => {};
+    const firstCreateStarted = new Promise<void>((resolve) => {
+      announceFirstCreate = resolve;
+    });
+    let lockTail = Promise.resolve();
+    const assistantCreate = vi.fn();
+    const database = {
+      $transaction: vi.fn(async (callback: (transaction: object) => Promise<unknown>) => {
+        let releaseLock: (() => void) | undefined;
+        const transaction = {
+          $queryRaw: vi.fn(async () => {
+            const previousLock = lockTail;
+            lockTail = new Promise<void>((resolve) => {
+              releaseLock = resolve;
+            });
+            await previousLock;
+            return [{ caseId }];
+          }),
+          conversationMessage: {
+            findFirst: vi.fn(async (query: FindFirstQuery) => {
+              findFirstQueries.push(query);
+              const latest = storedMessages
+                .filter((message) => query.where.role === undefined || message.role === query.where.role)
+                .toSorted((left, right) => right.messageSequence - left.messageSequence)[0];
+              if (latest === undefined) return null;
+              if (query.select.messageId) return { messageId: latest.messageId };
+              return { messageSequence: latest.messageSequence };
+            }),
+            create: vi.fn(async ({ data }: { data: Omit<StoredMessage, "createdAt"> }) => {
+              if (data.messageId === newerUserMessageId) {
+                announceFirstCreate();
+                await firstCreateMayFinish;
+              }
+              if (data.role === "assistant") assistantCreate(data);
+              const row = {
+                ...data,
+                createdAt: data.role === "user"
+                  ? new Date("2026-09-17T00:01:00.000Z")
+                  : new Date("2026-09-17T00:02:00.000Z"),
+              };
+              storedMessages.push(row);
+              return row;
+            }),
+          },
+        };
+        try {
+          return await callback(transaction);
+        } finally {
+          releaseLock?.();
+        }
+      }),
+    };
+    const repository = new PrismaMessageRepository(database as never);
+
+    const appendNewUser = repository.append(
+      accountId,
+      caseId,
+      { role: "user", content: "并发追加的新消息" },
+      newerUserMessageId,
+    );
+    await firstCreateStarted;
+    const appendRetryAssistant = repository.appendAssistantForLatestUser(
+      accountId,
+      caseId,
+      originalUserMessageId,
+      "基于旧消息生成的回复",
+      assistantMessageId,
+    );
+
+    releaseFirstCreate();
+    await expect(appendNewUser).resolves.toMatchObject({ messageId: newerUserMessageId });
+    await expect(appendRetryAssistant).rejects.toMatchObject({ name: "RetrySourceSuperseded" });
+    expect(assistantCreate).not.toHaveBeenCalled();
+    expect(storedMessages.map((message) => message.messageId)).toEqual([
+      originalUserMessageId,
+      newerUserMessageId,
+    ]);
+    expect(findFirstQueries).toEqual([
+      {
+        where: { accountId, caseId },
+        orderBy: { messageSequence: "desc" },
+        select: { messageSequence: true },
+      },
+      {
+        where: { accountId, caseId, role: "user" },
+        orderBy: { messageSequence: "desc" },
+        select: { messageId: true },
+      },
+    ]);
+    expect(database.$transaction).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Function),
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
+    expect(database.$transaction).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
   });
 
   it("rejects a consent event when the locked case row is already deleted", async () => {

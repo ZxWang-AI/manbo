@@ -32,7 +32,18 @@ export interface AuditEvent {
   metadata: Record<string, string | number>;
 }
 
-const metadataKeys = new Set(["connectorId", "fieldCount", "reasonCode", "reviewStatus"]);
+const metadataKeys = new Set([
+  "connectorId",
+  "fieldCount",
+  "reasonCode",
+  "reviewStatus",
+  "version",
+  "turnStatus",
+  "caseVersion",
+  "caseVersionAfter",
+  "messageCount",
+  "turnHash",
+]);
 
 export function hashRequestId(requestId: string, salt: string): string {
   return createHash("sha256").update(`${salt}:${requestId}`, "utf8").digest("hex");

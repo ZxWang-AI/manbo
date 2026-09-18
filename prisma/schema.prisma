@@ -24,6 +24,21 @@ enum MessageRole {
   system
 }
 
+enum ConversationTurnOperation {
+  send
+  retry
+}
+
+enum ConversationTurnStatus {
+  reserved
+  processing
+  result_ready
+  completed
+  conflict
+  failed
+  cancelled
+}
+
 enum AuditAction {
   create
   update
@@ -74,6 +89,7 @@ model Account {
   cleanupJobs CleanupJob[]
   appeals     AppealRecord[]
   processingJobs MaterialProcessingJob[]
+  conversationTurns ConversationTurn[]
 
   @@index([createdAt])
   @@map("accounts")
@@ -140,6 +156,7 @@ model CaseRecord {
   adminChanges  AdminCaseChangeVersion[]
   appeals       AppealRecord[]
   processingJobs MaterialProcessingJob[]
+  conversationTurns ConversationTurn[]
 
   @@unique([caseId, accountId])
   @@index([accountId, lifecycle])
@@ -326,6 +343,7 @@ model MaterialDerivative {
   parserVersion   String   @map("parser_version") @db.VarChar(40)
   sourceObjectKey String   @map("source_object_key") @db.VarChar(180)
   sourceSha256    String   @map("source_sha256") @db.Char(64)
+  encryptedContent Json?   @map("encrypted_content")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   material Material @relation(fields: [materialId, caseId, accountId], references: [materialId, caseId, accountId], onDelete: Cascade)
@@ -476,18 +494,50 @@ model MaterialUploadReservation {
 }
 
 model ConversationMessage {
-  messageId String      @id @map("message_id") @db.Uuid
-  caseId    String      @map("case_id") @db.Uuid
-  accountId String      @map("account_id") @db.Char(32)
-  role      MessageRole
-  content   String      @db.Text
-  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  messageId       String      @id @map("message_id") @db.Uuid
+  caseId          String      @map("case_id") @db.Uuid
+  accountId       String      @map("account_id") @db.Char(32)
+  turnId          String?     @map("turn_id") @db.Uuid
+  messageSequence Int         @map("message_sequence")
+  role             MessageRole
+  content          String      @db.Text
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   case CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
 
+  @@unique([caseId, accountId, messageSequence])
   @@index([caseId, accountId])
   @@index([createdAt])
   @@map("conversation_messages")
+}
+
+model ConversationTurn {
+  turnId             String                   @id @map("turn_id") @db.Uuid
+  accountId          String                   @map("account_id") @db.Char(32)
+  caseId             String                   @map("case_id") @db.Uuid
+  operation          ConversationTurnOperation
+  status             ConversationTurnStatus
+  sourceUserMessageId String?                @map("source_user_message_id") @db.Uuid
+  userMessageId      String?                 @map("user_message_id") @db.Uuid
+  baseCaseVersion    Int                     @map("base_case_version")
+  requestHash        String                  @map("request_hash") @db.Char(64)
+  resultSnapshot     Json?                   @map("result_snapshot")
+  responseSnapshot   Json?                   @map("response_snapshot")
+  assistantMessageId String?                 @map("assistant_message_id") @db.Uuid
+  caseVersionAfter   Int?                    @map("case_version_after")
+  attempts           Int                     @default(0)
+  leaseUntil         DateTime?               @map("lease_until") @db.Timestamptz(3)
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  completedAt        DateTime?                @map("completed_at") @db.Timestamptz(3)
+
+  account Account    @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
+  case    CaseRecord @relation(fields: [caseId, accountId], references: [caseId, accountId], onDelete: Cascade)
+
+  @@unique([accountId, caseId, turnId])
+  @@index([caseId, accountId, status])
+  @@index([leaseUntil])
+  @@map("conversation_turns")
 }
 
 model ConsentEvent {

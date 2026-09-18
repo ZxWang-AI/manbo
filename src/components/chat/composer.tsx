@@ -1,6 +1,6 @@
 "use client";
 
-import type { FormEvent, KeyboardEvent } from "react";
+import type { FormEvent, KeyboardEvent, RefObject } from "react";
 
 import { RealtimeVoice } from "./realtime-voice";
 import { VoiceInput } from "./voice-input";
@@ -12,6 +12,7 @@ export function Composer({
   onChange,
   onSubmit,
   onStop,
+  inputRef,
 }: {
   value: string;
   busy: boolean;
@@ -19,6 +20,7 @@ export function Composer({
   onChange: (value: string) => void;
   onSubmit: () => void;
   onStop: () => void;
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,6 +40,7 @@ export function Composer({
       <textarea
         id="message-input"
         name="message"
+        ref={inputRef}
         rows={3}
         maxLength={10_000}
         value={value}

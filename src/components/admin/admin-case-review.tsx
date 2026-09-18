@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import type { AdminCaseView } from "@/server/admin/admin-case-service";
 import type { AdminReviewVersion } from "@/domain/admin-review";
 import type { AdminCaseChangeVersion } from "@/server/repositories/admin-case-change-repository";
+import { collectCaseSourceTraces, SourceTraceList } from "../case-review/source-trace";
 
 const reviewStatuses = [
   ["intake_rejected", "无效接收"],
@@ -179,6 +180,13 @@ export function AdminCaseReviewWorkbench({ caseView }: { caseView: AdminCaseView
             })}
           </ul>
         </section>
+        {collectCaseSourceTraces(activeCaseView.record).length > 0 ? (
+          <section className="admin-panel" aria-labelledby="admin-source-trace-title">
+            <h2 id="admin-source-trace-title">来源追溯</h2>
+            <p>来源标签用于核对 AI 整理依据；内部引用编号不会显示在页面上。</p>
+            <SourceTraceList traces={collectCaseSourceTraces(activeCaseView.record)} />
+          </section>
+        ) : null}
         <section className="admin-panel" aria-labelledby="review-label-title">
           <h2 id="review-label-title">独立审核标注</h2>
           <p>标注会形成不可变审核版本，用于通知、继续补充和申诉；审核不会覆盖用户原始陈述或 AI 初审版本。</p>

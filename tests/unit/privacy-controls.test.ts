@@ -4,6 +4,7 @@ import { detectPotentialPersonalData } from "@/server/redaction";
 import { buildAuditEvent, sanitizeAuditMetadata } from "@/server/audit";
 import { DELETION_TARGETS, createDeletionReceipt } from "@/server/retention";
 import { rewrapDataEncryptionKey } from "@/server/key-rotation";
+import { turnResultSnapshotSchema } from "@/server/services/conversation-turn-contract";
 
 describe("privacy controls", () => {
   it("returns masked hints without exposing the raw personal-data span", () => {
@@ -66,5 +67,43 @@ describe("privacy controls", () => {
       "wrap:32:kek-v2",
       "verify:new-wrapped:kek-v2",
     ]);
+  });
+
+  it("allows only bounded turn metadata and rejects raw narrative/material/token fields", () => {
+    const metadata = sanitizeAuditMetadata({
+      turnStatus: "completed",
+      caseVersionAfter: 4,
+      messageCount: 3,
+      turnHash: "1".repeat(64),
+      rawNarrative: "原始叙述",
+      sourceQuote: "原文摘录",
+      materialText: "材料明文",
+      token: "provider-secret",
+      requestId: "request-secret",
+    });
+
+    expect(metadata).toEqual({
+      turnStatus: "completed",
+      caseVersionAfter: 4,
+      messageCount: 3,
+      turnHash: "1".repeat(64),
+    });
+    expect(JSON.stringify(metadata)).not.toMatch(/原始叙述|原文摘录|材料明文|provider-secret|request-secret/u);
+  });
+
+  it("rejects arbitrary fields in a persisted turn result snapshot", () => {
+    expect(() => turnResultSnapshotSchema.parse({
+      assistant: {
+        state: "FACT_GATHERING",
+        message: "安全回复",
+        questions: [],
+        actions: [],
+        disclaimerIds: ["ai-assessment"],
+        degraded: false,
+      },
+      rawNarrative: "不能写入",
+      materialText: "不能写入",
+      token: "不能写入",
+    })).toThrow();
   });
 });

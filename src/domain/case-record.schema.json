@@ -78,6 +78,35 @@
             "type": "string",
             "minLength": 1
           },
+          "sourceTrace": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "conversation",
+                    "knowledge",
+                    "material"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ],
+              "additionalProperties": false
+            }
+          },
           "certainty": {
             "type": "string",
             "enum": [
@@ -120,6 +149,35 @@
             "items": {
               "type": "string",
               "minLength": 1
+            }
+          },
+          "sourceTrace": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "conversation",
+                    "knowledge",
+                    "material"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ],
+              "additionalProperties": false
             }
           }
         },
@@ -201,7 +259,8 @@
                   "type": "string",
                   "enum": [
                     "conversation",
-                    "knowledge"
+                    "knowledge",
+                    "material"
                   ]
                 },
                 "id": {
@@ -260,7 +319,8 @@
                     "type": "string",
                     "enum": [
                       "conversation",
-                      "knowledge"
+                      "knowledge",
+                      "material"
                     ]
                   },
                   "id": {
@@ -314,7 +374,8 @@
                     "type": "string",
                     "enum": [
                       "conversation",
-                      "knowledge"
+                      "knowledge",
+                      "material"
                     ]
                   },
                   "id": {
@@ -368,7 +429,8 @@
                     "type": "string",
                     "enum": [
                       "conversation",
-                      "knowledge"
+                      "knowledge",
+                      "material"
                     ]
                   },
                   "id": {
@@ -444,6 +506,35 @@
             "items": {
               "type": "string",
               "minLength": 1
+            }
+          },
+          "sourceTrace": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "conversation",
+                    "knowledge",
+                    "material"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ],
+              "additionalProperties": false
             }
           },
           "safeOptions": {
@@ -603,7 +694,8 @@
             "type": "string",
             "enum": [
               "conversation",
-              "knowledge"
+              "knowledge",
+              "material"
             ]
           },
           "id": {

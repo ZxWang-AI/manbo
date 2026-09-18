@@ -16,7 +16,9 @@ import {
   type FactExtraction,
   type GatewayOperation,
   type GatewayTurnRequest,
+  type GatewayMaterialContext,
   type ModelInputPolicy,
+  type ConversationMaterialContext,
 } from "@/ai/provider";
 import type {
   EvidenceCoverageItem,
@@ -65,7 +67,30 @@ function emptyContext(): ConversationContext {
     facts: [],
     timeline: [],
     sourceMessageIds: [],
+    materials: [],
   };
+}
+
+async function prepareMaterialContext(
+  materials: readonly ConversationMaterialContext[],
+  policy: ModelInputPolicy,
+): Promise<GatewayMaterialContext[]> {
+  const prepared: GatewayMaterialContext[] = [];
+  for (const material of materials) {
+    const decision = await policy.prepare(material.text);
+    if (decision.kind === "confirmation_required") {
+      throw new ModelInputConfirmationRequired(decision.hintIds);
+    }
+    const textChanged = decision.text !== material.text;
+    prepared.push({
+      contentRef: material.contentRef,
+      text: decision.text,
+      // Source offsets refer to the original derivative. Once redaction changes
+      // its length, omit offsets rather than exposing misleading provenance.
+      ...(!textChanged && material.sourceSpans ? { sourceSpans: material.sourceSpans } : {}),
+    });
+  }
+  return prepared;
 }
 
 async function readResponseWithLimit(response: Response): Promise<string> {
@@ -132,6 +157,7 @@ export class GatewayAiProvider implements AiProvider {
     return validateFactExtraction(output, {
       conversationMessageIds: context.sourceMessageIds,
       knowledgeSourceIds: this.knowledgeSourceIds,
+      materialContentRefs: context.materials.map((material) => material.contentRef),
     });
   }
 
@@ -144,6 +170,7 @@ export class GatewayAiProvider implements AiProvider {
     return validateIndicatorAssessments(output, {
       conversationMessageIds: context.sourceMessageIds,
       knowledgeSourceIds: this.knowledgeSourceIds,
+      materialContentRefs: context.materials.map((material) => material.contentRef),
     });
   }
 
@@ -156,6 +183,7 @@ export class GatewayAiProvider implements AiProvider {
     return validateEvidenceCoverage(output, {
       conversationMessageIds: context.sourceMessageIds,
       knowledgeSourceIds: this.knowledgeSourceIds,
+      materialContentRefs: context.materials.map((material) => material.contentRef),
     });
   }
 
@@ -172,6 +200,8 @@ export class GatewayAiProvider implements AiProvider {
     }
     if (signal?.aborted) throw new ConversationCancelledError();
 
+    const preparedMaterials = await prepareMaterialContext(context.materials, this.options.inputPolicy);
+
     const requestId = this.requestId();
     const envelope: GatewayTurnRequest = {
       requestId,
@@ -179,7 +209,10 @@ export class GatewayAiProvider implements AiProvider {
       schemaVersion: "1.0",
       locale: this.options.locale,
       input: decision.text,
-      context,
+      context: {
+        ...context,
+        materials: preparedMaterials,
+      },
     };
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);

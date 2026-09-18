@@ -34,7 +34,7 @@ test("crisis language stops normal intake and exposes static safety resources", 
 
   await page.goto("/start");
   await page.getByRole("textbox", { name: "描述你的经历" }).fill("我被锁起来，不能离开工作地点");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: "发送", exact: true }).click();
 
   await expect(page.getByTestId("emergency-resources")).toBeVisible();
   await expect(page.getByText("不要为了取证让自己暴露风险。", { exact: false })).toBeVisible();

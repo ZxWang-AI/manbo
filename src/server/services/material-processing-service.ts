@@ -8,6 +8,7 @@ import { ParserRegistry } from "@/media/parsers/parser-registry";
 import { SafeExtractionWorker } from "@/media/parsers/safe-extraction-worker";
 import { detectFileSignature } from "@/media/security/file-signature";
 import type { MalwareScanner } from "@/media/security/malware-scanner";
+import type { MaterialDerivativePayload } from "@/media/security/material-derivative-content";
 
 const DEFAULT_SCANNER_TIMEOUT_MS = 15_000;
 const DEFAULT_PARSER_TIMEOUT_MS = 15_000;
@@ -27,7 +28,12 @@ export interface MaterialProcessingRepository {
     expectedVersion: number,
     next: Partial<Pick<MaterialProcessingRecord, "processingState" | "detectedMime" | "signatureStatus" | "eligibleForAi">>,
   ): Promise<MaterialProcessingRecord>;
-  addDerivative(derivative: { contentRef: string; sourceMaterialId: string; parserId: string }): Promise<void>;
+  addDerivative(derivative: {
+    contentRef: string;
+    sourceMaterialId: string;
+    parserId: string;
+    content: MaterialDerivativePayload;
+  }): Promise<void>;
   listAiEligibleContentRefs(materialId: string): Promise<string[]>;
 }
 
@@ -120,6 +126,10 @@ export class MaterialProcessingService {
         contentRef: derivative.contentRef,
         sourceMaterialId: input.materialId,
         parserId: parser.id,
+        content: {
+          text: derivative.text,
+          ...(derivative.sourceSpans ? { sourceSpans: derivative.sourceSpans } : {}),
+        },
       });
       return this.transition(queued, "parsed", { eligibleForAi: true });
     } catch {

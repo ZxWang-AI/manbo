@@ -26,6 +26,7 @@ describe("GET /api/cases/[caseId]/materials", () => {
         declaredMime: "application/pdf",
         processingState: "scanning",
         eligibleForAi: false,
+        aiContentRefs: [],
         createdAt: "2026-09-04T00:00:00.000Z",
       },
     ]);
@@ -47,6 +48,7 @@ describe("GET /api/cases/[caseId]/materials", () => {
         declaredMime: "application/pdf",
         processingState: "scanning",
         eligibleForAi: false,
+        aiContentRefs: [],
         createdAt: "2026-09-04T00:00:00.000Z",
       }],
     });

@@ -27,6 +27,8 @@ export const factItemSchema = z.strictObject({
   value: z.string().min(1),
   sourceMessageIds: z.array(z.string().min(1)),
   sourceQuote: z.string().min(1),
+  /** Optional normalized references for facts extracted from materials or mixed sources. */
+  sourceTrace: z.array(sourceTraceSchema).optional(),
   certainty: z.enum(["user_stated", "uncertain"]),
 });
 
@@ -35,6 +37,8 @@ export const timelineItemSchema = z.strictObject({
   occurredAt: z.iso.datetime().optional(),
   description: z.string().min(1),
   sourceMessageIds: z.array(z.string().min(1)),
+  /** Optional normalized references for timeline entries extracted from materials. */
+  sourceTrace: z.array(sourceTraceSchema).optional(),
 });
 
 export const caseRecordSchema = z.strictObject({

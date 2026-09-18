@@ -50,5 +50,8 @@ describe("administrator workbench", () => {
     expect(html).toContain("案件维护");
     expect(html).toContain("软删除案件");
     expect(html).toContain("管理员变更历史");
+    expect(html).toContain("来源追溯");
+    expect(html).toContain("对话内容（可回看原始对话）");
+    expect(html).not.toContain("msg-1");
   });
 });

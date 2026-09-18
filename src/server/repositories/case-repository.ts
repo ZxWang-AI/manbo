@@ -5,6 +5,7 @@ import {
   type CaseRecord as PersistedCaseRecord,
   type PrismaClient,
 } from "@prisma/client";
+import { z } from "zod";
 
 import {
   caseRecordSchema,
@@ -12,6 +13,9 @@ import {
   type CasePatch,
   type CaseRecord,
 } from "@/domain/case-record";
+import type { PrivateCaseListItem } from "@/domain/case-list";
+
+export type { PrivateCaseListItem } from "@/domain/case-list";
 
 const caseDraftSchema = caseRecordSchema.omit({
   caseId: true,
@@ -21,7 +25,7 @@ const caseDraftSchema = caseRecordSchema.omit({
   deletedAt: true,
   version: true,
 });
-const casePatchSchema = caseRecordSchema
+export const casePatchSchema = caseRecordSchema
   .pick({
     jurisdiction: true,
     facts: true,
@@ -48,6 +52,7 @@ export class ConcurrencyConflict extends Error {
 
 export interface CaseRepository {
   createDraft(accountId: string, draft: CaseDraft): Promise<CaseRecord>;
+  listPrivate(accountId: string): Promise<PrivateCaseListItem[]>;
   getPrivate(accountId: string, caseId: string): Promise<CaseRecord | null>;
   getVersionPrivate(
     accountId: string,
@@ -63,8 +68,56 @@ export interface CaseRepository {
   markDeleted(accountId: string, caseId: string): Promise<void>;
 }
 
-function jsonInput(value: unknown): Prisma.InputJsonValue {
+export function jsonInput(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function casePatchUpdateData(parsed: z.infer<typeof casePatchSchema>, now: Date): Prisma.CaseRecordUpdateManyMutationInput {
+  return {
+    version: { increment: 1 },
+    updatedAt: now,
+    ...(parsed.jurisdiction ? { jurisdiction: jsonInput(parsed.jurisdiction) } : {}),
+    ...(parsed.facts ? { facts: jsonInput(parsed.facts) } : {}),
+    ...(parsed.timeline ? { timeline: jsonInput(parsed.timeline) } : {}),
+    ...(parsed.iloIndicators ? { iloIndicators: jsonInput(parsed.iloIndicators) } : {}),
+    ...(parsed.elements ? { elements: jsonInput(parsed.elements) } : {}),
+    ...(parsed.evidenceCoverage ? { evidenceCoverage: jsonInput(parsed.evidenceCoverage) } : {}),
+    ...(parsed.legalNavigation ? { legalNavigation: jsonInput(parsed.legalNavigation) } : {}),
+    ...(parsed.referrals ? { referrals: jsonInput(parsed.referrals) } : {}),
+    ...(parsed.safetyFlags ? { safetyFlags: jsonInput(parsed.safetyFlags) } : {}),
+    ...(parsed.sourceTrace ? { sourceTrace: jsonInput(parsed.sourceTrace) } : {}),
+    ...(parsed.consent ? { consent: jsonInput(parsed.consent) } : {}),
+    ...(parsed.lifecycle ? { lifecycle: parsed.lifecycle } : {}),
+    ...(parsed.aiReviewStatus ? { aiReviewStatus: parsed.aiReviewStatus } : {}),
+  };
+}
+
+/** Apply only the case row update inside a caller-owned transaction. */
+export async function applyPrivatePatchInTransaction(
+  transaction: Prisma.TransactionClient,
+  accountId: string,
+  caseId: string,
+  patch: CasePatch,
+  expectedVersion: number,
+  now: Date = new Date(),
+): Promise<PersistedCaseRecord> {
+  const parsed = casePatchSchema.parse(patch);
+  if (parsed.lifecycle === "deleted") {
+    throw new Error("Use markDeleted to preserve the deletion invariant");
+  }
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    throw new ConcurrencyConflict();
+  }
+  const updated = await transaction.caseRecord.updateMany({
+    where: { accountId, caseId, visibility: "private", version: expectedVersion, deletedAt: null },
+    data: casePatchUpdateData(parsed, now),
+  });
+  if (updated.count !== 1) throw new ConcurrencyConflict();
+  const row = await transaction.caseRecord.findFirst({
+    where: { accountId, caseId, visibility: "private", deletedAt: null },
+  });
+  if (!row) throw new ConcurrencyConflict();
+  return row;
 }
 
 export function toDomainRecord(row: PersistedCaseRecord): CaseRecord {
@@ -166,6 +219,33 @@ export class PrismaCaseRepository implements CaseRepository {
     return toDomainRecord(row);
   }
 
+  async listPrivate(accountId: string): Promise<PrivateCaseListItem[]> {
+    const rows = await this.database.caseRecord.findMany({
+      where: { accountId, visibility: "private", deletedAt: null },
+      orderBy: [{ updatedAt: "desc" }, { caseId: "asc" }],
+      take: 100,
+      select: {
+        caseId: true,
+        lifecycle: true,
+        version: true,
+        aiReviewStatus: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { materials: true } },
+      },
+    });
+
+    return rows.map((row) => ({
+      caseId: row.caseId,
+      lifecycle: row.lifecycle,
+      version: row.version,
+      ...(row.aiReviewStatus ? { aiReviewStatus: row.aiReviewStatus as CaseRecord["aiReviewStatus"] } : {}),
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      materialCount: row._count.materials,
+    }));
+  }
+
   async getPrivate(accountId: string, caseId: string): Promise<CaseRecord | null> {
     const row = await this.database.caseRecord.findFirst({
       where: { accountId, caseId, visibility: "private", deletedAt: null },
@@ -210,57 +290,15 @@ export class PrismaCaseRepository implements CaseRepository {
     patch: CasePatch,
     expectedVersion: number,
   ): Promise<CaseRecord> {
-    const parsed = casePatchSchema.parse(patch);
-    if (parsed.lifecycle === "deleted") {
-      throw new Error("Use markDeleted to preserve the deletion invariant");
-    }
-    if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
-      throw new ConcurrencyConflict();
-    }
-
-    const data: Prisma.CaseRecordUpdateManyMutationInput = {
-      version: { increment: 1 },
-      updatedAt: this.now(),
-      ...(parsed.jurisdiction ? { jurisdiction: jsonInput(parsed.jurisdiction) } : {}),
-      ...(parsed.facts ? { facts: jsonInput(parsed.facts) } : {}),
-      ...(parsed.timeline ? { timeline: jsonInput(parsed.timeline) } : {}),
-      ...(parsed.iloIndicators ? { iloIndicators: jsonInput(parsed.iloIndicators) } : {}),
-      ...(parsed.elements ? { elements: jsonInput(parsed.elements) } : {}),
-      ...(parsed.evidenceCoverage
-        ? { evidenceCoverage: jsonInput(parsed.evidenceCoverage) }
-        : {}),
-      ...(parsed.legalNavigation
-        ? { legalNavigation: jsonInput(parsed.legalNavigation) }
-        : {}),
-      ...(parsed.referrals ? { referrals: jsonInput(parsed.referrals) } : {}),
-      ...(parsed.safetyFlags ? { safetyFlags: jsonInput(parsed.safetyFlags) } : {}),
-      ...(parsed.sourceTrace ? { sourceTrace: jsonInput(parsed.sourceTrace) } : {}),
-      ...(parsed.consent ? { consent: jsonInput(parsed.consent) } : {}),
-      ...(parsed.lifecycle ? { lifecycle: parsed.lifecycle } : {}),
-      ...(parsed.aiReviewStatus ? { aiReviewStatus: parsed.aiReviewStatus } : {}),
-    };
-
     return this.database.$transaction(async (transaction) => {
-      const updated = await transaction.caseRecord.updateMany({
-        where: {
-          accountId,
-          caseId,
-          visibility: "private",
-          version: expectedVersion,
-          deletedAt: null,
-        },
-        data,
-      });
-      if (updated.count !== 1) {
-        throw new ConcurrencyConflict();
-      }
-
-      const row = await transaction.caseRecord.findFirst({
-        where: { accountId, caseId, visibility: "private", deletedAt: null },
-      });
-      if (!row) {
-        throw new ConcurrencyConflict();
-      }
+      const row = await applyPrivatePatchInTransaction(
+        transaction,
+        accountId,
+        caseId,
+        patch,
+        expectedVersion,
+        this.now(),
+      );
       await appendCaseRevision(transaction, row);
       await transaction.auditEvent.create({
         data: {

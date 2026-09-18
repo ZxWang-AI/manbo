@@ -7,6 +7,8 @@ export interface ChatMessage {
   id: string;
   role: ChatMessageRole;
   content: string;
+  persistedMessageId?: string;
+  turnId?: string;
   assistantState?: string;
   actions?: string[];
 }
@@ -20,6 +22,7 @@ export interface ChatState {
 export interface ChatActionResult {
   state: ChatState;
   content: string;
+  messageId?: string;
 }
 
 const allowedPatchKeys: ReadonlyArray<keyof CasePatch> = [
@@ -65,11 +68,30 @@ export function createChatState(): ChatState {
   };
 }
 
-export function addUserMessage(state: ChatState, content: string): ChatState {
+export function addUserMessage(
+  state: ChatState,
+  content: string,
+  messageId = `user-${state.messages.length}`,
+): ChatState {
   return {
     ...state,
-    messages: [...state.messages, { id: `user-${state.messages.length}`, role: "user", content }],
+    messages: [...state.messages, { id: messageId, role: "user", content }],
     status: "sending",
+  };
+}
+
+export function bindPersistedUserMessage(
+  state: ChatState,
+  localMessageId: string,
+  persistedMessageId: string,
+): ChatState {
+  return {
+    ...state,
+    messages: state.messages.map((message) =>
+      message.id === localMessageId && message.role === "user"
+        ? { ...message, persistedMessageId }
+        : message,
+    ),
   };
 }
 
@@ -98,6 +120,16 @@ export function stopGeneration(state: ChatState): ChatState {
   return { ...state, status: "idle" };
 }
 
+/** A replay must never move the local editor back to an older case version. */
+export function acceptCaseVersion(
+  current: number | undefined,
+  incoming: number | undefined,
+): number | undefined {
+  if (incoming === undefined || !Number.isInteger(incoming) || incoming < 1) return current;
+  if (current === undefined || !Number.isInteger(current) || current < 1) return incoming;
+  return Math.max(current, incoming);
+}
+
 export function beginEdit(state: ChatState, messageId: string): ChatActionResult {
   const message = state.messages.find((candidate) => candidate.id === messageId && candidate.role === "user");
   if (!message) return { state, content: "" };
@@ -108,11 +140,8 @@ export function prepareRetry(state: ChatState): ChatActionResult {
   const message = [...state.messages].reverse().find((candidate) => candidate.role === "user");
   if (!message) return { state, content: "" };
   return {
-    state: {
-      ...state,
-      messages: [...state.messages, { id: `user-${state.messages.length}`, role: "user", content: message.content }],
-      status: "sending",
-    },
+    state: { ...state, status: "sending" },
     content: message.content,
+    ...(message.persistedMessageId ? { messageId: message.persistedMessageId } : {}),
   };
 }

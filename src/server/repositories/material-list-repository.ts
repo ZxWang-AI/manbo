@@ -7,6 +7,8 @@ export interface MaterialListItem {
   declaredMime: string | null;
   processingState: string;
   eligibleForAi: boolean;
+  /** Opaque server-issued refs; never includes derived text or object keys. */
+  aiContentRefs: string[];
   createdAt: string;
 }
 
@@ -34,6 +36,10 @@ export class PrismaMaterialListRepository implements MaterialListRepository {
         declaredMime: true,
         processingState: true,
         eligibleForAi: true,
+        derivatives: {
+          orderBy: { createdAt: "asc" },
+          select: { contentRef: true, encryptedContent: true },
+        },
         createdAt: true,
       },
     });
@@ -44,6 +50,9 @@ export class PrismaMaterialListRepository implements MaterialListRepository {
       declaredMime: row.declaredMime,
       processingState: row.processingState,
       eligibleForAi: row.eligibleForAi,
+      aiContentRefs: row.processingState === "parsed" && row.eligibleForAi
+        ? (row.derivatives ?? []).filter((derivative) => derivative.encryptedContent !== null).map((derivative) => derivative.contentRef)
+        : [],
       createdAt: row.createdAt.toISOString(),
     }));
   }

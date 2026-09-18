@@ -1,6 +1,7 @@
 import type { MaterialUiState } from "./processing-status";
 
 export const MAX_LOCAL_MATERIAL_BYTES = 100 * 1024 * 1024;
+export const MAX_MATERIAL_REFRESH_INTERVAL_MS = 60_000;
 
 export interface LocalMaterialPreviewInput {
   name: string;
@@ -25,7 +26,33 @@ export function createLocalMaterialPreview(input: LocalMaterialPreviewInput): Lo
   };
 }
 
-export function scheduleMaterialRefresh(refresh: () => void): () => void {
-  const timer = setTimeout(refresh, 0);
-  return () => clearTimeout(timer);
+export interface MaterialRefreshScheduleOptions {
+  intervalMs?: number;
+}
+
+export function scheduleMaterialRefresh(
+  refresh: () => void,
+  options: MaterialRefreshScheduleOptions = {},
+): () => void {
+  const intervalMs = options.intervalMs;
+  if (
+    intervalMs !== undefined &&
+    (!Number.isInteger(intervalMs) || intervalMs <= 0 || intervalMs > MAX_MATERIAL_REFRESH_INTERVAL_MS)
+  ) {
+    throw new TypeError(`intervalMs must be an integer between 1 and ${MAX_MATERIAL_REFRESH_INTERVAL_MS}`);
+  }
+
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const run = () => {
+    if (cancelled) return;
+    refresh();
+    if (!cancelled && intervalMs !== undefined) timer = setTimeout(run, intervalMs);
+  };
+
+  timer = setTimeout(run, 0);
+  return () => {
+    cancelled = true;
+    if (timer !== undefined) clearTimeout(timer);
+  };
 }

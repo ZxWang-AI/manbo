@@ -55,7 +55,7 @@ test("does not show specific legal provisions before a jurisdiction is confirmed
 
   await page.goto("/start");
   await page.getByRole("textbox", { name: "描述你的经历" }).fill("请整理这段经历");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: "发送", exact: true }).click();
 
   await expect(page.getByText("确认法域后再显示具体法律来源。", { exact: true })).toBeVisible();
   await expect(page.getByText("18 U.S.C. § 1589 可供参考", { exact: true })).toHaveCount(0);
@@ -80,7 +80,7 @@ test("shows source date and recheck status for a jurisdiction-scoped legal sourc
 
   await page.goto("/start");
   await page.getByRole("textbox", { name: "描述你的经历" }).fill("请整理这段经历");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: "发送", exact: true }).click();
 
   await expect(page.getByText("仅作信息导航，不替代法律意见", { exact: true })).toBeVisible();
   await expect(page.getByText("来源：kb-us-criminal · 核实日期：2026-08-31", { exact: true })).toBeVisible();

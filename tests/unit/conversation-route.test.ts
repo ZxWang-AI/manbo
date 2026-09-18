@@ -35,6 +35,35 @@ describe("conversation route", () => {
     await expect(response.json()).resolves.toMatchObject({ code: "INVALID_INPUT" });
   });
 
+  it("rejects a persistent retry id in static preview mode before calling AI", async () => {
+    const providerFactory = vi.fn();
+    const response = await createConversationPostHandler({
+      accounts: { resumeSession: vi.fn() },
+      cases: { getPrivate: vi.fn(), updatePrivate: vi.fn() },
+      messages: {
+        append: vi.fn(),
+        findPrivateUser: vi.fn(),
+        listPrivate: vi.fn(),
+        appendAssistant: vi.fn(),
+        appendAssistantForLatestUser: vi.fn(),
+      },
+      providerFactory,
+      isPersistenceAvailable: false,
+    })(new Request("http://localhost/api/conversation", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "static-session",
+        message: "普通描述",
+        retryUserMessageId: "11111111-1111-4111-8111-111111111101",
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "INVALID_INPUT" });
+    expect(providerFactory).not.toHaveBeenCalled();
+  });
+
   it("fails closed in production until persistent services are connected", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("APP_MODE", "normal");
@@ -84,8 +113,10 @@ describe("conversation route", () => {
       cases: { getPrivate: vi.fn().mockResolvedValue({ caseId: "case-a", accountId: "acct-a", jurisdiction: {}, facts: [], timeline: [], version: 1 }) as never, updatePrivate: vi.fn() },
       messages: {
         append: vi.fn().mockResolvedValue({ messageId: "message-a" }),
+        findPrivateUser: vi.fn(),
         listPrivate: vi.fn().mockResolvedValue([]),
         appendAssistant: vi.fn(),
+        appendAssistantForLatestUser: vi.fn(),
       },
       providerFactory: () => ({
         detectSafety: vi.fn().mockRejectedValue(new Error("gateway down")),
@@ -107,7 +138,13 @@ describe("conversation route", () => {
     const responsePromise = createConversationPostHandler({
       accounts: { resumeSession: vi.fn() },
       cases: { getPrivate: vi.fn(), updatePrivate: vi.fn() },
-      messages: { append: vi.fn(), listPrivate: vi.fn(), appendAssistant: vi.fn() },
+      messages: {
+        append: vi.fn(),
+        findPrivateUser: vi.fn(),
+        listPrivate: vi.fn(),
+        appendAssistant: vi.fn(),
+        appendAssistantForLatestUser: vi.fn(),
+      },
       providerFactory: () => ({
         detectSafety: async (_input, signal) => {
           await new Promise<void>((_resolve, reject) => signal?.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), { once: true }));

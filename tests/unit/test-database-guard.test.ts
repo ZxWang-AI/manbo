@@ -56,4 +56,48 @@ describe("integration database guard", () => {
       ),
     ).toThrow(/confirmation/i);
   });
+
+  it("allows an explicitly configured alternate local test port", () => {
+    const originalPort = process.env.MANBO_TEST_DATABASE_PORT;
+    process.env.MANBO_TEST_DATABASE_PORT = "55433";
+    try {
+      expect(() =>
+        assertIsolatedTestDatabase(
+          "postgresql://manbo:manbo_test@127.0.0.1:55433/manbo_test?schema=public",
+          "confirmed",
+        ),
+      ).not.toThrow();
+      expect(() =>
+        assertIsolatedTestDatabase(
+          "postgresql://manbo:manbo_test@127.0.0.1:55432/manbo_test?schema=public",
+          "confirmed",
+        ),
+      ).toThrow(/port/i);
+    } finally {
+      if (originalPort === undefined) {
+        delete process.env.MANBO_TEST_DATABASE_PORT;
+      } else {
+        process.env.MANBO_TEST_DATABASE_PORT = originalPort;
+      }
+    }
+  });
+
+  it("rejects a configured local port outside the dedicated test allowlist", () => {
+    const originalPort = process.env.MANBO_TEST_DATABASE_PORT;
+    process.env.MANBO_TEST_DATABASE_PORT = "5432";
+    try {
+      expect(() =>
+        assertIsolatedTestDatabase(
+          "postgresql://manbo:manbo_test@127.0.0.1:5432/manbo_test?schema=public",
+          "confirmed",
+        ),
+      ).toThrow(/MANBO_TEST_DATABASE_PORT/u);
+    } finally {
+      if (originalPort === undefined) {
+        delete process.env.MANBO_TEST_DATABASE_PORT;
+      } else {
+        process.env.MANBO_TEST_DATABASE_PORT = originalPort;
+      }
+    }
+  });
 });

@@ -4,7 +4,7 @@ test("local material preview is visible but never presented as a saved upload", 
   await page.goto("/start");
   await page.getByLabel("添加材料").setInputFiles("tests/fixtures/materials/sample.pdf");
   await expect(page.getByText("本地预览，尚未上传")).toBeVisible();
-  await expect(page.getByRole("button", { name: "发送" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "发送", exact: true })).toBeEnabled();
   await expect(page.getByText("已保存、尚未读取")).not.toBeVisible();
 });
 
@@ -59,7 +59,7 @@ test("a saved material refreshes its safe processing state and can request a ret
 
   await page.goto("/start");
   await page.getByRole("textbox", { name: "描述你的经历" }).fill("先保存案件，再添加材料");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: "发送", exact: true }).click();
 
   await expect(page.getByText("扫描未完成，可安全重试")).toBeVisible();
   await expect(page.getByRole("button", { name: "重新处理材料" })).toBeVisible();

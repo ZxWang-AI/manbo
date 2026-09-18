@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { ParserRegistry } from "@/media/parsers/parser-registry";
 import type { MalwareScanner } from "@/media/security/malware-scanner";
 import type { MaterialObjectStoreConfiguration } from "@/media/storage/object-store-factory";
+import type { MaterialDerivativeContentCipher } from "@/media/security/material-derivative-content";
 import { PrismaMaterialProcessingRepository } from "@/server/repositories/material-processing-repository";
 import { PrismaMaterialProcessingJobRepository } from "@/server/repositories/material-processing-job-repository";
 import { PrismaMaterialProcessingSourceRepository } from "@/server/repositories/material-processing-source-repository";
@@ -16,6 +17,7 @@ export interface MaterialProcessingRuntimeOptions {
   objectStorage: MaterialObjectStoreConfiguration;
   scanner?: MalwareScanner;
   parsers?: ParserRegistry;
+  derivativeContentCipher?: MaterialDerivativeContentCipher;
   queueMode?: "memory" | "durable";
 }
 
@@ -28,6 +30,7 @@ export function createMaterialProcessingQueue({
   objectStorage,
   scanner = unavailableScanner,
   parsers = new ParserRegistry([]),
+  derivativeContentCipher,
   queueMode = "memory",
 }: MaterialProcessingRuntimeOptions): MaterialProcessingQueue {
   if (queueMode === "durable") {
@@ -39,10 +42,10 @@ export function createMaterialProcessingQueue({
     const task = new MaterialProcessingTaskService(
       new PrismaMaterialProcessingSourceRepository(database),
       reader,
-      new MaterialProcessingService(
-        new PrismaMaterialProcessingRepository(database, job.accountId, job.caseId),
-        parsers,
-      ),
+        new MaterialProcessingService(
+          new PrismaMaterialProcessingRepository(database, job.accountId, job.caseId, derivativeContentCipher),
+          parsers,
+        ),
       scanner,
     );
     await task.run(job);
@@ -58,6 +61,7 @@ export function createMaterialProcessingWorker({
   objectStorage,
   scanner = unavailableScanner,
   parsers = new ParserRegistry([]),
+  derivativeContentCipher,
 }: MaterialProcessingRuntimeOptions): MaterialProcessingWorker {
   const queue = new PrismaMaterialProcessingJobRepository(database);
   return new MaterialProcessingWorker(queue, async (job) => {
@@ -66,7 +70,7 @@ export function createMaterialProcessingWorker({
       new PrismaMaterialProcessingSourceRepository(database),
       objectStorage.reader,
       new MaterialProcessingService(
-        new PrismaMaterialProcessingRepository(database, job.accountId, job.caseId),
+        new PrismaMaterialProcessingRepository(database, job.accountId, job.caseId, derivativeContentCipher),
         parsers,
       ),
       scanner,
