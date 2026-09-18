@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const aiMessage = (
   <article className="message message--assistant" data-message-role="assistant">
     <div className="avatar avatar--ai" data-avatar-position="left" aria-hidden="true">
@@ -68,7 +70,8 @@ export default function HomePage() {
           </div>
         </form>
 
-        <a className="primary-button primary-button--inline" href="/start">进入 AI 对话工作台</a>
+        <Link className="primary-button primary-button--inline" href="/start">进入 AI 对话工作台</Link>
+        <p className="workspace-links"><Link href="/cases">查看我的私密档案</Link><span aria-hidden="true">·</span><Link href="/recover">恢复访问</Link></p>
 
         <p className="boundary-note">你可以随时停下、修改或删除内容；未经确认，不会替你对外提交。</p>
       </section>

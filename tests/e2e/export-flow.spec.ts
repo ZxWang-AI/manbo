@@ -62,7 +62,7 @@ test("export requires a preview and a separate user confirmation", async ({ page
 
   await page.goto("/start");
   await page.getByRole("textbox", { name: "描述你的经历" }).fill("请整理这段经历");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: "发送", exact: true }).click();
   await page.getByRole("button", { name: "保存为私密档案" }).click();
   await page.getByRole("button", { name: "预览导出" }).click();
 

@@ -29,7 +29,22 @@ export interface ConversationContext {
   facts: FactItem[];
   timeline: TimelineItem[];
   sourceMessageIds: string[];
+  /** Server-resolved, scanned and user-selected material derivatives. */
+  materials: ConversationMaterialContext[];
 }
+
+export interface ConversationMaterialContext {
+  contentRef: string;
+  materialId: string;
+  text: string;
+  sourceSpans?: Array<{ start: number; end: number }>;
+}
+
+/**
+ * Material fields allowed to cross the AI Gateway boundary. Internal database
+ * identifiers stay inside the application and are used only for provenance.
+ */
+export type GatewayMaterialContext = Omit<ConversationMaterialContext, "materialId">;
 
 export interface FactExtraction {
   facts: FactItem[];
@@ -81,7 +96,9 @@ export interface GatewayTurnRequest {
   schemaVersion: "1.0";
   locale: string;
   input: string;
-  context: ConversationContext;
+  context: Omit<ConversationContext, "materials"> & {
+    materials: GatewayMaterialContext[];
+  };
 }
 
 export interface GatewayTurnResponse {

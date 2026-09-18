@@ -41,7 +41,7 @@ test("bootstraps a private case before sending and keeps recovery secret one-tim
 
   await page.goto("/start");
   await page.getByRole("textbox", { name: "描述你的经历" }).fill("我被扣留护照");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: "发送", exact: true }).click();
 
   await expect(page.getByTestId("recovery-secret")).toHaveText("once-only-secret");
   expect(accountCreates).toBe(1);
@@ -103,14 +103,14 @@ test("promotes a preview conversation to one private case when saving later succ
 
   await page.goto("/start");
   await page.getByRole("textbox", { name: "描述你的经历" }).fill("第一段经历");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByRole("button", { name: "保存为私密档案" })).toBeVisible();
 
   await page.getByRole("button", { name: "保存为私密档案" }).click();
   await expect(page.getByTestId("recovery-secret")).toHaveText("promoted-once-only-secret");
 
   await page.getByRole("textbox", { name: "描述你的经历" }).fill("第二段经历");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: "发送", exact: true }).click();
 
   expect(accountCreates).toBe(2);
   expect(caseCreates).toBe(1);

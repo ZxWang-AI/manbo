@@ -55,7 +55,7 @@ test("user edits a qualitative indicator and saves the patch with the current ca
 
   await page.goto("/start");
   await page.getByRole("textbox", { name: "描述你的经历" }).fill("请整理这段经历");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByRole("heading", { name: "ILO 指标矩阵" })).toBeVisible();
 
   await page.getByLabel("指标 5状态").selectOption("not_hit");

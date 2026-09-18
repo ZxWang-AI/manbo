@@ -287,6 +287,38 @@ describe("crisis-first conversation orchestration", () => {
     expect(rejected.draftPatch).toBeUndefined();
   });
 
+  it("accepts material traces only for server-resolved context refs", async () => {
+    const indicator = {
+      indicatorId: 1 as const,
+      status: "hit" as const,
+      basis: [{ kind: "material" as const, id: "derived/material-a-v1", quote: "材料摘录" }],
+      missing: [],
+    };
+    const provider = new RecordingProvider({ indicators: [indicator] });
+    const session = {
+      ...makeOrdinarySession(),
+      state: "ILO_MAPPING" as const,
+      context: {
+        ...makeOrdinarySession().context,
+        materials: [{ contentRef: "derived/material-a-v1", materialId: "material-a", text: "材料摘录" }],
+      },
+    };
+
+    const accepted = await createConversationOrchestrator({
+      provider,
+      inputPolicy: new RecordingPolicy(),
+    }).handleMessage(ordinaryFixture.input, session);
+    const rejected = await createConversationOrchestrator({
+      provider: new RecordingProvider({ indicators: [{ ...indicator, basis: [{ ...indicator.basis[0]!, id: "derived/not-owned" }] }] }),
+      inputPolicy: new RecordingPolicy(),
+    }).handleMessage(ordinaryFixture.input, session);
+
+    expect(accepted.degraded).toBe(false);
+    expect(accepted.draftPatch?.iloIndicators).toEqual([indicator]);
+    expect(rejected.degraded).toBe(true);
+    expect(rejected.draftPatch).toBeUndefined();
+  });
+
   it("rejects empty and oversized input before any policy or provider call", async () => {
     const provider = new RecordingProvider();
     const policy = new RecordingPolicy();
@@ -353,8 +385,53 @@ describe("provider-neutral gateway", () => {
         facts: [],
         timeline: [],
         sourceMessageIds: [],
+        materials: [],
       },
     });
+  });
+
+  it("applies the input policy to selected material text before sending the gateway envelope", async () => {
+    const requests: Request[] = [];
+    const fetchImpl = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
+      const captured = new Request(request, init);
+      requests.push(captured);
+      const body = (await captured.clone().json()) as { requestId: string };
+      return Response.json({ requestId: body.requestId, output: { facts: [], timeline: [], jurisdictionPatch: {} } });
+    });
+    const policy: ModelInputPolicy = {
+      prepare: async (input) => ({
+        kind: "approved" as const,
+        text: input.includes("13800138000") ? input.replace("13800138000", "[电话]") : input,
+        basis: "redacted" as const,
+      }),
+    };
+    const provider = new GatewayAiProvider({
+      ...baseConfig,
+      inputPolicy: policy,
+      fetchImpl: fetchImpl as typeof fetch,
+      requestId: () => "req-material-redaction",
+    });
+
+    await provider.extractFacts("请整理", {
+      jurisdiction: {},
+      facts: [],
+      timeline: [],
+      sourceMessageIds: ["message-1"],
+      materials: [{
+        contentRef: "derived/material-a-v1",
+        materialId: "material-a",
+        text: "联系 13800138000",
+        sourceSpans: [{ start: 0, end: 16 }],
+      }],
+    });
+
+    const body = await requests[0]!.clone().json() as { context: { materials: Array<{ text: string; sourceSpans?: unknown }> } };
+    expect(body.context.materials[0]).toEqual({
+      contentRef: "derived/material-a-v1",
+      text: "联系 [电话]",
+    });
+    expect(JSON.stringify(body)).not.toContain("materialId");
+    expect(JSON.stringify(body)).not.toContain("13800138000");
   });
 
   it("works through a real Node test server with one streamed request", async () => {

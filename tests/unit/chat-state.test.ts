@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   addAssistantMessage,
   addUserMessage,
+  bindPersistedUserMessage,
   createChatState,
   beginEdit,
   mergeDraftPatch,
   prepareRetry,
   stopGeneration,
+  acceptCaseVersion,
 } from "@/components/chat/chat-state";
 
 describe("chat state", () => {
@@ -72,17 +74,40 @@ describe("chat state", () => {
     expect(result.state.status).toBe("idle");
   });
 
-  it("prepares a retry from the latest user turn and keeps the previous turn visible", () => {
+  it("prepares a retry from the latest stored user turn without duplicating history", () => {
+    const userState = addUserMessage(createChatState(), "上一轮描述");
     const state = addAssistantMessage(
-      addUserMessage(createChatState(), "上一轮描述"),
+      {
+        ...userState,
+        messages: userState.messages.map((message) =>
+          message.role === "user"
+            ? { ...message, persistedMessageId: "stored-user-id" }
+            : message,
+        ),
+      },
       { id: "assistant-1", content: "上一轮回复" },
     );
     const result = prepareRetry(state);
 
     expect(result.content).toBe("上一轮描述");
-    expect(result.state.messages.at(-1)).toMatchObject({ role: "user", content: "上一轮描述" });
-    expect(result.state.messages).toHaveLength(4);
+    expect(result.messageId).toBe("stored-user-id");
+    expect(result.state.messages).toBe(state.messages);
+    expect(result.state.messages).toHaveLength(3);
     expect(result.state.status).toBe("sending");
+  });
+
+  it("binds a server-issued id to one user message without changing its history", () => {
+    const state = addUserMessage(createChatState(), "上一轮描述");
+    const bound = bindPersistedUserMessage(state, "user-1", "stored-user-id");
+
+    expect(bound.messages[1]).toMatchObject({
+      id: "user-1",
+      role: "user",
+      content: "上一轮描述",
+      persistedMessageId: "stored-user-id",
+    });
+    expect(bound.messages[0]).toBe(state.messages[0]);
+    expect(state.messages[1]).not.toHaveProperty("persistedMessageId");
   });
 
   it("merges patches without exposing scoring fields", () => {
@@ -92,5 +117,12 @@ describe("chat state", () => {
     });
 
     expect(state.draftPatch).toEqual({ facts: [] });
+  });
+
+  it("never regresses the local case version when a replay is older", () => {
+    expect(acceptCaseVersion(5, 3)).toBe(5);
+    expect(acceptCaseVersion(5, 6)).toBe(6);
+    expect(acceptCaseVersion(undefined, 2)).toBe(2);
+    expect(acceptCaseVersion(5, undefined)).toBe(5);
   });
 });

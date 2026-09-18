@@ -175,6 +175,7 @@ function validationScope(
   return {
     conversationMessageIds: context.sourceMessageIds,
     knowledgeSourceIds,
+    materialContentRefs: context.materials.map((material) => material.contentRef),
   };
 }
 

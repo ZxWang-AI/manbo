@@ -9,6 +9,10 @@ interface DeletionReceipt {
   targets?: string[];
 }
 
+export function buildCaseDeleteUrl(caseId: string): string {
+  return `/api/cases/${encodeURIComponent(caseId)}/delete`;
+}
+
 export function CaseDetail({ caseId }: { caseId: string }) {
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState(true);
@@ -36,7 +40,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
   async function deleteCase() {
     setError(undefined);
     try {
-      const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}`, { method: "DELETE" });
+      const response = await fetch(buildCaseDeleteUrl(caseId), { method: "DELETE" });
       const payload = await response.json().catch(() => ({})) as { receipt?: DeletionReceipt; message?: string };
       if (!response.ok) throw new Error(payload.message ?? "案件删除暂时不可用。");
       setReceipt(payload.receipt);
@@ -68,6 +72,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
       {!loading && available ? (
         <>
           <p>这是你的私密案件。你可以继续补充材料，或在需要时主动删除。</p>
+          <Link className="primary-button primary-button--inline" href={`/cases/${encodeURIComponent(caseId)}/conversation`}>继续对话</Link>
           {!confirming ? (
             <button type="button" className="secondary-button secondary-button--danger" onClick={() => setConfirming(true)}>删除此案件</button>
           ) : (

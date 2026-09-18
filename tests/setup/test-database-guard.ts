@@ -1,9 +1,16 @@
 const allowedTestDatabaseHosts = new Set(["127.0.0.1", "localhost", "test-db"]);
-const allowedPortsByHost: Readonly<Record<string, string>> = {
-  "127.0.0.1": "55432",
-  localhost: "55432",
-  "test-db": "5432",
-};
+const allowedLocalTestPorts = new Set(["55432", "55433"]);
+
+function expectedPort(hostname: string): string | undefined {
+  if (hostname === "test-db") return "5432";
+  if (hostname !== "127.0.0.1" && hostname !== "localhost") return undefined;
+
+  const localTestPort = process.env.MANBO_TEST_DATABASE_PORT ?? "55432";
+  if (!allowedLocalTestPorts.has(localTestPort)) {
+    throw new Error("MANBO_TEST_DATABASE_PORT must be an allowed isolated-test port");
+  }
+  return localTestPort;
+}
 
 export function assertIsolatedTestDatabase(
   databaseUrl: string | undefined,
@@ -23,7 +30,7 @@ export function assertIsolatedTestDatabase(
   if (!allowedTestDatabaseHosts.has(url.hostname)) {
     throw new Error(`Refusing to truncate a database on host: ${url.hostname}`);
   }
-  if (url.port !== allowedPortsByHost[url.hostname]) {
+  if (url.port !== expectedPort(url.hostname)) {
     throw new Error(`Refusing to truncate a database on unexpected port: ${url.port}`);
   }
   if (decodeURIComponent(url.username) !== "manbo") {

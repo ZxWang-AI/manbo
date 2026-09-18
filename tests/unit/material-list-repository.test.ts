@@ -13,6 +13,10 @@ describe("material list repository", () => {
         declaredMime: "application/pdf",
         processingState: "parsed",
         eligibleForAi: true,
+        derivatives: [
+          { contentRef: "derived/material-a-v1", encryptedContent: { ciphertext: "opaque" } },
+          { contentRef: "derived/legacy", encryptedContent: null },
+        ],
         createdAt: new Date("2026-09-04T00:00:00.000Z"),
       },
     ]);
@@ -26,6 +30,7 @@ describe("material list repository", () => {
       declaredMime: "application/pdf",
       processingState: "parsed",
       eligibleForAi: true,
+      aiContentRefs: ["derived/material-a-v1"],
       createdAt: "2026-09-04T00:00:00.000Z",
     }]);
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({

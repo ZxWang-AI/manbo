@@ -261,6 +261,8 @@ export interface FactItem {
   value: string;
   sourceMessageIds: string[];
   sourceQuote: string;
+  /** Optional normalized traces for material-backed or mixed-source facts. */
+  sourceTrace?: SourceTrace[];
   certainty: "user_stated" | "uncertain";
 }
 
@@ -290,6 +292,8 @@ export interface EvidenceCoverageItem {
   status: CoverageStatus;
   explanation: string;
   sourceMessageIds: string[];
+  /** Optional normalized traces for material-backed or mixed-source coverage. */
+  sourceTrace?: SourceTrace[];
   safeOptions: string[];
 }
 

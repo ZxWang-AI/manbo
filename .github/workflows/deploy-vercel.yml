@@ -95,10 +95,10 @@ jobs:
           printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
 
       - name: Pull production environment
-        run: pnpm dlx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+        run: pnpm dlx --yes vercel@latest pull --yes --environment=production
 
       - name: Build Vercel output
-        run: pnpm dlx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+        run: pnpm dlx --yes vercel@latest build --prod
 
       - name: Deploy prebuilt output
-        run: pnpm dlx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        run: pnpm dlx --yes vercel@latest deploy --prebuilt --prod

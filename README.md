@@ -22,8 +22,8 @@ Manbo 不替官方机构调查或认定，不提供法律意见、心理治疗�
 | 研究报告与产品方案 | 已完成一次治理审阅（2026-08-31），不是法律意见 |
 | 知识库 | 26 个 Markdown 文件；按来源和核实日期维护 |
 | 可视化原型 | 已加入 `prototype/`；用于演示交互，不接入真实数据 |
-| 应用基础（本地） | 账户/会话、私密案件、对话持久化、材料安全流水线、语音、管理员审核、用户删除/导出与 WCAG 回归已实现并通过本地测试；AI 质量门禁已独立接入 CI，覆盖危机优先、法律越界降级、未知来源拒绝和黄金案例；解析阶段具备输入/输出资源上限、超时和严格派生结果 schema 回退保护；材料完成落库后会尝试本地异步处理，失败不会删除原件；真实部署仍需 Gate 1 证据 |
-| 长期私密证据托管 | 方案 A 的本地/staging 加密适配器、分片上传、处理重试与安全摘要接口已实现；代码已加入可显式启用的 PostgreSQL 持久化处理队列、租约回收、长任务心跳续租、受限退避、死信状态和受监督 worker 入口，并提供 provider-neutral HTTPS media Gateway 契约（严格 scanner/derivative 响应校验、超时/响应大小限制、无文件名和案件标识外发）；默认仍 fail-closed，尚未完成真实对象存储/KMS、扫描/隔离解析、Gateway 留存与网络隔离、worker 监督、指标告警和备份恢复演练，因而不能开启生产托管 |
+| 应用基础（本地） | 账户/会话、私密案件、对话持久化、材料安全流水线、语音、管理员审核、用户删除/导出与 WCAG 回归已实现并通过本地测试；AI 质量门禁已独立接入 CI，覆盖危机优先、法律越界降级、未知来源拒绝和黄金案例；解析阶段具备输入/输出资源上限、超时和严格派生结果 schema 回退保护；材料完成落库后会尝试本地异步处理，失败不会删除原件；解析后的派生文本现在以独立 AES-256-GCM envelope 加密持久化，并可由服务端按 opaque `contentRef` 解密后加入对话上下文，浏览器不会收到明文；本地案件列表、恢复访问和继续对话工作台已实现，并通过定向单测与浏览器回归；真实部署仍需 Gate 1/2 的对象存储、KMS、扫描、身份和恢复证据，不能据此宣称生产功能闭环完成。 |
+| 长期私密证据托管 | 方案 A 的本地/staging 加密适配器、分片上传、处理重试、安全摘要和加密派生内容持久化接口已实现；代码已加入可显式启用的 PostgreSQL 持久化处理队列、租约回收、长任务心跳续租、受限退避、死信状态和受监督 worker 入口，并提供 provider-neutral HTTPS media Gateway 契约（严格 scanner/derivative 响应校验、超时/响应大小限制、无文件名和案件标识外发）；默认仍 fail-closed，尚未完成生产 KMS/密钥轮换、真实对象存储、扫描/隔离解析、Gateway 留存与网络隔离、worker 监督、指标告警和备份恢复演练，因而不能开启生产托管 |
 | 公开举报、公司页、地图、跨案件聚合、B2B API | 未发布，必须通过发布门禁 |
 | 真实用户数据 | 未收集 |
 
@@ -62,11 +62,15 @@ Manbo 不替官方机构调查或认定，不提供法律意见、心理治疗�
 
 材料只有在安全扫描与解析完成、状态为 `parsed` 且被标记为可供 AI 使用后，才可作为有来源关联的派生内容进入 AI。无法读取、待扫描、扫描失败、隔离或已阻断的原始材料可以保留在私密案件中，但不会发送给模型。完整运行边界、重试条件与生产前门禁见 [`docs/operations-runbook.md`](docs/operations-runbook.md)。
 
+派生内容在数据库中只保存加密 envelope（不保存明文文本列）；对话请求只携带用户主动选择的 opaque `contentRef`，服务端完成归属、状态、解密和总长度校验后，才把安全解析文本交给 AI Gateway。派生内容密钥必须独立于原始对象密钥，并通过 `MATERIAL_DERIVATIVE_MASTER_KEY` 与 `MATERIAL_DERIVATIVE_KEY_VERSION` 配置；生产 KMS、轮换和恢复演练仍是发布门禁。
+
 材料处理 worker 可通过 `MATERIAL_SECURITY_GATEWAY=isolated` 接入独立的 HTTPS media Gateway。Scanner 使用 `/v1/media/scan`，Parser 使用 `/v1/media/parse`；请求仅携带二进制材料和必要的检测 MIME/容器元数据，不携带原始文件名、账户/案件/材料标识、用户叙述或原始文本。未配置或配置不合规时，worker 使用 fail-closed 实现；这项适配器不代表真实扫描、解析沙箱或供应商零留存审查已经完成。
 
 ## 部署
 
 GitHub 用于源码审查和 Actions 自动化；运行环境可以是手动启用的 Vercel，也可以是按 [`docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md`](docs/superpowers/plans/2026-09-09-home-server-proxmox-deployment.md) 配置的 Proxmox 私有 staging。GitHub Pages 只适合展示 `prototype/` 静态原型，不能承载真实案件、AI、语音或材料托管。生产部署配置见 [`docs/deployment.md`](docs/deployment.md)；合并到 `main` 会自动运行 CI，但当前不会自动部署。Vercel workflow 仅供手动触发，家庭服务器自动发布会在 VM 和安全通道完成后另行启用。所有数据库、Vercel、AI Gateway 和会话密钥都必须通过平台 Secrets 配置，禁止提交到仓库。
+
+部署后可通过只读的 `GET /api/health` 查看配置是否完整。接口只返回模式、配置状态和缺失/无效变量名，不返回任何凭据，也不把“配置通过”表述为数据库、AI Gateway、对象存储或材料处理已经生产就绪；具体使用方式见 [`docs/deployment.md`](docs/deployment.md)。
 
 ## 重要声明
 

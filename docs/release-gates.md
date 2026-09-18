@@ -30,22 +30,28 @@
 - [ ] 已完成 WCAG 2.2 AA 基础检查、低带宽和个人设备安全提示测试。
 - [ ] 已完成对象存储加密、密钥轮换、删除/备份清理、恶意文件隔离和解析失败降级演练。代码已提供 provider-neutral HTTPS media Gateway 契约（请求不含文件名/案件标识，响应 request ID 与 scanner/derivative schema 严格校验，大小/超时受限）；真实扫描器、解析沙箱、零留存策略、网络隔离和端到端演练仍是门禁项。
 - [ ] 生产材料处理使用持久化队列；每个任务具备所有者/案件/材料幂等键、租约、受限重试与退避、死信隔离、指标与告警。代码已具备 PostgreSQL 队列表、租约回收、并发归属校验、受监督 worker 入口、不含敏感标识的进程内事件计数/停止摘要，以及 `starting/running/draining/stopped/faulted` liveness/readiness 状态契约和本地监督/健康检查 smoke 契约；但必须完成真实 PostgreSQL migration/集成证据、真实进程监督/优雅退出验证、外部积压/失败/死信指标采集与阈值告警、重启策略和恢复演练后才能勾选。进程内队列不得作为生产替代。
-- [ ] 处理链路证明：只有 `parsed` 且 `eligibleForAi=true` 的来源关联派生内容可进入 AI；隔离、扫描中、扫描失败、无法读取、待解析和恶意材料无法通过上传、重试或 API 路径绕过该边界。
+- [ ] 对话序号与 turn ledger 的 expand-contract 发布已在真实 PostgreSQL 上应用全部 11 个迁移，并验证确定性回填、旧实例触发器写入、新实例显式写入、新旧并发、原子回滚、锁等待及 turn/role 归属约束。本地 PostgreSQL 17 已通过 11 个迁移、turn 并发 reserve/finalize、五类失败回滚、retry 锁交错、软删除 fail-closed 和快照加密；受控滚动部署、应用回滚、恢复、锁等待时长和生产密钥演练尚未完成，因此门禁仍不勾选。迁移失败必须阻断部署；兼容触发器只能在版本收敛、回滚窗口结束和旧写路径零使用证据完成后通过独立 contract migration 移除。
+- [ ] 处理链路证明：只有 `parsed` 且 `eligibleForAi=true`、存在独立密钥加密 envelope 且通过服务端归属/完整性/大小校验的来源关联派生内容可进入 AI；隔离、扫描中、扫描失败、无法读取、待解析、旧的无 envelope 派生记录和恶意材料无法通过上传、重试或 API 路径绕过该边界。代码级边界已有单元测试，生产 KMS、轮换和端到端演练仍待完成。
 - [x] 已建立运行手册、威胁模型、DPIA 初筛和红队基线；真实对象存储/KMS/扫描/备份和生产身份演练仍未完成。
 - [ ] 删除回执覆盖主记录、消息、材料元数据、对象、转写、包裹密钥、索引、缓存和备份队列；清理任务可重试且有恢复后删除证据。
-- [ ] 审计字段经过白名单净化，不包含原始叙述、来源摘录、凭据、完整请求标识、IP 或设备标识；AI 降级不写入“已保存/已提交”状态。
+- [ ] 审计字段经过白名单净化，不包含原始叙述、来源摘录、凭据、完整请求标识、IP 或设备标识；AI 降级不写入“已保存/已提交”状态。turn 响应现在区分 `userMessageSaved` 与 `assistantMessageSaved`，降级时不会宣称 assistant 已保存；仍需生产日志与供应商留存审阅。
 - [x] 本地基线已覆盖：管理员查看、播放和下载不产生应用级访问记录；RBAC 覆盖管理员路由；标注、修改和删除保留独立、不可变的审核版本，并与用户陈述/AI 版本分层保存；主管案件维护使用乐观并发，变更历史可单独查询。生产启用仍需真实 OIDC/SSO、加密对象存储和集成演练。
 
-### 当前证据状态（2026-09-09）
+### 当前证据状态（2026-09-18）
 
-- 本地已通过：TypeScript、ESLint、72 个 Vitest 文件/355 项单元测试、17 项 Playwright（含 2 项 axe）和 Next.js 生产构建。AI 质量门禁单独通过 2 个文件/12 项测试。解析资源门禁已覆盖输入字节上限、输出字符上限、超时和严格派生结果 schema，超限或非法结果不会进入 AI；这只是代码级保护，不能替代隔离解析运行时。Gateway Provider 工厂和新增 media Gateway 适配器均有单元测试，生产环境配置错误 fail-closed 且不回退本地 Provider；扫描器返回错误、抛出异常或超时（默认上限 15 秒）时材料会进入 `scan_failed`，不会进入解析器或 AI。新增本地/staging 加密对象存储适配器、服务端分片 PUT/取消路由和前端预约/分片/完成/失败清理客户端，但不替代真实 S3/KMS；已完成对象 key 不可覆盖。
+- 当前未提交工作树已在 bundled Node 24.19.0（项目声明仍要求 Node 22.14.x）下完成最新本地回归：TypeScript PASS；ESLint PASS（0 warning）；Vitest 91 文件/469 项 PASS；Next.js production build PASS；Playwright 31/31 PASS。PostgreSQL integration、AI quality 和文档治理仍分别以各自证据记录为准；这些本地结果不替代远程 CI、生产迁移、密钥/备份演练或生产就绪审查，因此不能把当前状态解释为生产就绪。
+- 当前工作树新增第 10 个 `202609170010_add_conversation_message_sequence` 和第 11 个 `202609180011_add_conversation_turn_ledger` expand-contract 迁移。隔离 PostgreSQL 17 临时集群已应用全部 11 个迁移；完整 integration 5 文件/33 项通过，覆盖 turn owner 竞争、同案件序列、case/revision/audit/assistant/turn 五类原子回滚、retry/新 user 交错、软删除、跨 scope UUID、过期 processing CAS 和 AES-GCM snapshot envelope；验证后已停止并删除明确的临时集群目录。本机使用白名单备用端口 `MANBO_TEST_DATABASE_PORT=55433`，未放宽其他 test DB 限制。受控滚动发布、应用回滚、恢复、锁等待时长和生产密钥/备份演练仍未完成，不能把本地 PASS 升格为部署或生产证据。
+- 本轮新增的 `/api/health` 配置诊断契约和 Vercel workflow 凭据参数回归已在工作树通过 2 个文件/19 项 Vitest；诊断只校验环境变量形状、不连接数据库或 Gateway，且 workflow 依赖 `VERCEL_TOKEN` 环境变量而不把 token 传入命令行。该变更尚未提交，不能作为生产部署或连通性证据。
+- 本轮修复了案件删除页面的回执路由、材料处理状态的可取消轮询，并收紧了派生内容引用和 Gateway 数据最小化；同时为轮次上下文增加 `messageSequence` 上限，避免 reserve 后追加的未来消息进入当前 AI 请求，并为缺失租约的活动轮次提供安全过期回收。Windows 本地浏览器进程 `spawn EPERM` 的历史限制不代表当前回归结果；最新完整 Playwright 回归已通过 31/31。
+- 派生材料内容现已在代码层以独立 AES-256-GCM envelope 持久化，并由服务端按 opaque `contentRef` 解密后接入 AI 上下文；材料列表和浏览器不会收到明文。本地案件列表、恢复访问和继续对话工作台已实现，并有 5 个文件/13 项定向单测覆盖。生产审计仍阻断功能闭环：生产对象存储/KMS 与密钥轮换、真实扫描沙箱、受监督材料 worker、真实 Gateway 零留存/网络隔离、备份恢复/删除演练和 OIDC/SSO 仍未完成。以上项目完成前不得接收真实举报材料。
 - 本地处理桥接已实现：首次完成落库后尝试按账户、案件和材料三元组入队；失败不会撤销已保存的加密对象或配额，幂等完成重放不会重复入队。任务会验证加密对象元数据、读取长度和归属，再交给 fail-closed 扫描/解析服务。用户只能为 `quarantined`、`saved_unread`、`scan_failed` 材料请求重新排队，材料列表接口不暴露对象 URL、对象 key、密钥或原始内容。持久化队列与 worker 基础已实现：设置 `MATERIAL_PROCESSING_QUEUE=durable` 后 API 使用 PostgreSQL 入队，租约到期可恢复，长任务按租约时长的一半续租，续租/完成/失败要求租约归属，指数退避并进入 `dead_letter`；`pnpm worker:materials` 仅在显式环境开关和独立监督进程中运行，入口的六类事件计数、净化停止摘要和 liveness/readiness 状态契约已有代码。真实 PostgreSQL 生产演练、扫描器/解析器、进程监督、外部指标采集/阈值告警和恢复演练尚未完成，仍不足以通过本门禁。
 - 对话取消链路已覆盖：用户点击“停止生成”后，AbortSignal 从路由传播到编排器及 Gateway fetch。每项尚未开始的持久化副作用前都会检查取消：首项写入前观察到取消时请求返回 HTTP `499`，不写入 assistant 消息、案件补丁或 `model_fallback` 审计；若取消发生在已开始的数据库操作中，事务结果由该操作决定，但路由不会启动后续写入。用户消息仍可保留。
+- 对话 turn ledger 已在未提交工作树实现：普通发送返回并绑定数据库用户消息 ID；retry 只接受最新 user、不复制 user；稳定 turnId/canonical hash、`result_ready` 恢复、过期 processing CAS、completed/conflict/failed/cancelled 重放、原子 patch/revision/audit/assistant 提交和应用层 AES-GCM snapshot 均有单元与 PostgreSQL 集成证据。`userMessageSaved`/`assistantMessageSaved` 分开表达。需区分两类异常：provider 返回可安全展示的 `assistant.degraded` 会保存为 `completed` 的降级快照（不写 case patch/assistant），而 provider/编排硬异常、材料校验失败或取消才会写入可重放的 `failed`/`cancelled` 终态；最终化暂时不可用时保留 `result_ready` 供恢复。仍未解决的是 provider 在 result_ready 前的外部成本 exactly-once、facts/timeline 业务去重、生产 key rotation/真实 Gateway 和滚动恢复演练；R-22 仍为发布阻断项。
 - CI 已配置 GitHub-hosted runner 上的 PostgreSQL 宿主服务（不使用 Docker service）执行迁移和集成测试；`AI quality gates` 已作为独立 job 运行黄金案例与安全边界回归。提交 `529a390` 的远程证据：[Actions run 34309785468](https://github.com/ZxWang-AI/manbo/actions/runs/34309785468)（四个 job 全部通过）。
 - parser 资源与派生结果 schema 增强后的提交 `231c980` 远程证据：[Actions run 34326247088](https://github.com/ZxWang-AI/manbo/actions/runs/34326247088)（Verify、AI quality gates、PostgreSQL integration 和 Browser/accessibility 四个 job 全部通过）。
 - 本地已建立：多语言/混合语言/信息不足/提示注入/危机黄金案例、运行手册、威胁模型、DPIA 初筛和红队基线。
 - 仍阻断：真实对象存储/KMS、持久化扫描与处理队列生产演练（含受监督 worker、指标/告警和恢复证据）、真实隔离扫描/解析运行时与 Gateway 零留存/网络隔离演练、备份恢复与删除演练、生产 OIDC/SSO/MFA、经审查的真实 AI Gateway 端到端演练与多语言人工审阅。代码层的 PostgreSQL 队列和 provider-neutral media Gateway 契约已具备，现有单元测试不能替代生产数据库、扫描器、解析沙箱、worker 和告警演练。
-- 环境前置：本机 Node.js/pnpm 版本与项目锁定值不一致（当前 Node 25.8.2 + pnpm 9.15.9；要求 Node 22.14.x + pnpm 11.24.0），发布前必须在锁定运行时重跑全部门禁。
+- 环境前置：系统默认 Node.js/pnpm 仍与项目锁定值不一致（Node 25.8.2 + pnpm 9.15.9；要求 Node 22.14.x + pnpm 11.24.0），但本轮全量门禁已使用锁定的 Node 22.14.0 + pnpm 11.24.0 完成。后续 CI/发布仍必须使用锁定运行时，不得改用系统默认版本。
 - 因此上述本地 PASS 不能单独把 Gate 1 标记为生产通过；每项仍需命名审阅人和可复核证据链接。
 
 策略扫描的预期命中范围包括生产侧的禁止字段/法律越界拦截器（`src/ai/output-contract.ts`）、拒绝评分字段的领域契约（`src/domain/assessment.ts`）以及对应测试；这些命中是保护逻辑，不是用户-facing 文案或模型输出字段。

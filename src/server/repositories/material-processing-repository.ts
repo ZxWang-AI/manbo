@@ -1,12 +1,20 @@
 import { randomUUID } from "node:crypto";
 
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import {
   assertMaterialProcessingTransition,
   type MaterialProcessingRecord,
 } from "@/domain/material";
+import type {
+  MaterialDerivativeContentCipher,
+  MaterialDerivativePayload,
+} from "@/media/security/material-derivative-content";
 import type { MaterialProcessingRepository } from "@/server/services/material-processing-service";
+
+function jsonInput(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
 
 function toProcessingRecord(row: {
   materialId: string;
@@ -35,6 +43,7 @@ export class PrismaMaterialProcessingRepository implements MaterialProcessingRep
     private readonly database: PrismaClient,
     private readonly accountId: string,
     private readonly caseId: string,
+    private readonly contentCipher?: MaterialDerivativeContentCipher,
   ) {}
 
   async get(materialId: string): Promise<MaterialProcessingRecord | null> {
@@ -90,7 +99,9 @@ export class PrismaMaterialProcessingRepository implements MaterialProcessingRep
     contentRef: string;
     sourceMaterialId: string;
     parserId: string;
+    content: MaterialDerivativePayload;
   }): Promise<void> {
+    if (!this.contentCipher) throw new Error("MATERIAL_DERIVATIVE_CIPHER_UNAVAILABLE");
     const material = await this.database.material.findFirst({
       where: {
         materialId: derivative.sourceMaterialId,
@@ -102,6 +113,7 @@ export class PrismaMaterialProcessingRepository implements MaterialProcessingRep
       select: { objectKey: true, sha256: true },
     });
     if (!material?.objectKey || !material.sha256) throw new Error("MATERIAL_SOURCE_UNAVAILABLE");
+    const encryptedContent = await this.contentCipher.encrypt(derivative.content);
     await this.database.materialDerivative.upsert({
       where: {
         materialId_contentRef: {
@@ -119,6 +131,7 @@ export class PrismaMaterialProcessingRepository implements MaterialProcessingRep
         parserVersion: "1",
         sourceObjectKey: material.objectKey,
         sourceSha256: material.sha256,
+        encryptedContent: jsonInput(encryptedContent),
       },
       update: {},
     });
@@ -141,8 +154,10 @@ export class PrismaMaterialProcessingRepository implements MaterialProcessingRep
         },
       },
       orderBy: { createdAt: "asc" },
-      select: { contentRef: true },
+      select: { contentRef: true, encryptedContent: true },
     });
-    return rows.map((row) => row.contentRef);
+    return rows
+      .filter((row) => row.encryptedContent !== null && row.encryptedContent !== undefined)
+      .map((row) => row.contentRef);
   }
 }

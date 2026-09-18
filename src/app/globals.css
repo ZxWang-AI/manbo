@@ -53,6 +53,31 @@ textarea {
   backdrop-filter: blur(18px);
 }
 
+.topbar__actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+}
+
+.text-link,
+.workspace-links a,
+.recovery-links a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.text-link:hover,
+.text-link:focus-visible,
+.workspace-links a:hover,
+.workspace-links a:focus-visible,
+.recovery-links a:hover,
+.recovery-links a:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
@@ -645,6 +670,39 @@ h1 {
   border-top: 1px solid var(--line);
 }
 
+.source-trace-section .section-copy {
+  margin-bottom: 10px;
+}
+
+.source-trace {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(9, 13, 15, 0.22);
+}
+
+.source-trace summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.source-trace summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.source-trace-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0 12px 12px 28px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 .fact-item {
   align-items: flex-start;
 }
@@ -1051,6 +1109,138 @@ textarea:focus-visible {
   text-align: center;
 }
 
+.workspace-links {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 20px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.cases-shell,
+.recovery-shell {
+  width: min(100% - 40px, 980px);
+  margin: 0 auto;
+  padding: 76px 0 96px;
+}
+
+.cases-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+  margin: 18px 0 30px;
+}
+
+.cases-heading h1,
+.recovery-shell h1 {
+  font-size: clamp(2rem, 5vw, 3.8rem);
+}
+
+.cases-heading p {
+  max-width: 650px;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.saved-case-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.saved-case-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(16, 22, 25, 0.74);
+}
+
+.saved-case-item__summary {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.saved-case-item__summary strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.saved-case-item__summary span,
+.saved-case-item__summary small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.saved-case-item__summary time {
+  overflow-wrap: anywhere;
+}
+
+.saved-case-item__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.recovery-shell {
+  max-width: 680px;
+}
+
+.recovery-shell > .section-copy {
+  max-width: 580px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.recovery-form {
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
+  margin-top: 28px;
+}
+
+.recovery-form label {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.recovery-form input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.recovery-form input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.recovery-form .primary-button {
+  margin-top: 10px;
+}
+
+.recovery-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 22px;
+  font-size: 0.84rem;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1076,6 +1266,14 @@ textarea:focus-visible {
   .topbar {
     min-height: 60px;
     padding: 0 18px;
+  }
+
+  .topbar__actions {
+    gap: 10px;
+  }
+
+  .topbar__actions .privacy-state {
+    display: none;
   }
 
   .conversation {
@@ -1115,6 +1313,25 @@ textarea:focus-visible {
   .composer__actions {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .cases-shell,
+  .recovery-shell {
+    width: min(100% - 28px, 980px);
+    padding-top: 56px;
+  }
+
+  .cases-heading {
+    flex-direction: column;
+  }
+
+  .saved-case-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .saved-case-item__actions {
+    justify-content: flex-start;
   }
 }
 

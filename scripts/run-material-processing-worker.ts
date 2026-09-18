@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createMaterialObjectStoreFromEnv } from "@/media/storage/object-store-factory";
 import { createIsolatedMediaGatewayFromEnv } from "@/media/security/isolated-media-gateway";
+import { createMaterialDerivativeContentCipherFromEnv } from "@/media/security/material-derivative-content";
 import { prisma } from "@/server/db";
 import {
   createMaterialProcessingWorker,
@@ -19,11 +20,15 @@ const workerId = process.env.MATERIAL_PROCESSING_WORKER_ID?.trim() || `material-
 const idleDelayMs = parseIdleDelay(process.env.MATERIAL_PROCESSING_IDLE_DELAY_MS);
 const objectStorage = createMaterialObjectStoreFromEnv();
 const mediaGateway = createIsolatedMediaGatewayFromEnv();
+const derivativeCipher = createMaterialDerivativeContentCipherFromEnv();
 const worker = createMaterialProcessingWorker({
   database: prisma,
   objectStorage,
   ...(mediaGateway.available
     ? { scanner: mediaGateway.scanner, parsers: mediaGateway.parsers }
+    : {}),
+  ...(derivativeCipher.available
+    ? { derivativeContentCipher: derivativeCipher.cipher }
     : {}),
 });
 const controller = new AbortController();

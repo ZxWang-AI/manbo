@@ -19,6 +19,13 @@ export interface CasesPostHandlerOptions {
   requestId?: () => string;
 }
 
+export interface CasesGetHandlerOptions {
+  accounts: Pick<AccountRepository, "resumeSession">;
+  cases: Pick<CaseRepository, "listPrivate">;
+  isPersistenceAvailable: boolean;
+  requestId?: () => string;
+}
+
 function readCookie(request: Request, name: string): string | null {
   const cookieHeader = request.headers.get("cookie");
   if (!cookieHeader) return null;
@@ -105,11 +112,56 @@ export function createCasesPostHandler({
   };
 }
 
+export function createCasesGetHandler({
+  accounts,
+  cases,
+  isPersistenceAvailable,
+  requestId = randomUUID,
+}: CasesGetHandlerOptions): (request: Request) => Promise<Response> {
+  return async (request) => {
+    const id = requestId();
+    if (!isPersistenceAvailable) {
+      return errorResponse("DEGRADED", "案件服务暂时不可用；请稍后重试。", 503, id);
+    }
+
+    const sessionId = readCookie(request, "manbo_session");
+    if (!sessionId) {
+      return errorResponse("UNAUTHENTICATED", "会话已失效，请重新进入平台。", 401, id);
+    }
+
+    const session = await accounts.resumeSession(sessionId).catch(() => null);
+    if (!session) {
+      return errorResponse("UNAUTHENTICATED", "会话已失效，请重新进入平台。", 401, id);
+    }
+
+    try {
+      const records = await cases.listPrivate(session.accountId);
+      return Response.json(
+        { cases: records },
+        { headers: { "cache-control": "no-store" } },
+      );
+    } catch {
+      return errorResponse("DEGRADED", "案件服务暂时不可用；请稍后重试。", 503, id);
+    }
+  };
+}
+
 const defaultAccounts = new PrismaAccountRepository(prisma);
 const defaultCases = new PrismaCaseRepository(prisma);
 
 export async function POST(request: Request): Promise<Response> {
   return createCasesPostHandler({
+    accounts: defaultAccounts,
+    cases: defaultCases,
+    isPersistenceAvailable:
+      process.env.APP_MODE !== "static" &&
+      Boolean(process.env.DATABASE_URL) &&
+      (process.env.NODE_ENV !== "production" || Boolean(process.env.SESSION_SECRET)),
+  })(request);
+}
+
+export async function GET(request: Request): Promise<Response> {
+  return createCasesGetHandler({
     accounts: defaultAccounts,
     cases: defaultCases,
     isPersistenceAvailable:

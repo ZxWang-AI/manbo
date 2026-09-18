@@ -10,6 +10,7 @@ export function makeConversationContext(): ConversationContext {
     facts: [],
     timeline: [],
     sourceMessageIds: ["msg-current"],
+    materials: [],
   };
 }
 

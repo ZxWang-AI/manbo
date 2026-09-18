@@ -93,4 +93,26 @@ describe("Task 1 tooling contract", () => {
     );
     expect(health).toContain("material_processing_worker_state");
   });
+
+  it("does not pass the Vercel deployment token as a command-line argument", () => {
+    const workflow = readFileSync(
+      path.join(rootDirectory, ".github/workflows/deploy-vercel.yml"),
+      "utf8",
+    );
+
+    expect(workflow).toContain("VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}");
+    expect(workflow).not.toMatch(/--token(?:=|\s)/u);
+    expect(workflow).toContain("vercel@latest pull --yes --environment=production");
+    expect(workflow).toContain("vercel@latest build --prod");
+    expect(workflow).toContain("vercel@latest deploy --prebuilt --prod");
+  });
+
+  it("keeps the runtime health route request-dynamic", () => {
+    const health = readFileSync(
+      path.join(rootDirectory, "src/app/api/health/route.ts"),
+      "utf8",
+    );
+
+    expect(health).toContain('export const dynamic = "force-dynamic";');
+  });
 });

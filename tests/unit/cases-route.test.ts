@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { makeCaseRecordFixture } from "../fixtures/case-record";
@@ -7,7 +7,7 @@ import {
   ConcurrencyConflict,
   type CaseRepository,
 } from "@/server/repositories/case-repository";
-import { createCasesPostHandler } from "@/app/api/cases/route";
+import { createCasesGetHandler, createCasesPostHandler } from "@/app/api/cases/route";
 import { createCaseRouteHandlers } from "@/app/api/cases/[caseId]/route";
 
 function session(): AuthSession {
@@ -119,6 +119,53 @@ describe("POST /api/cases", () => {
     expect(expired.status).toBe(401);
     await expect(absent.json()).resolves.toMatchObject({ code: "UNAUTHENTICATED" });
     await expect(expired.json()).resolves.toMatchObject({ code: "UNAUTHENTICATED" });
+  });
+});
+
+describe("GET /api/cases", () => {
+  it("lists only safe summaries for the authenticated owner", async () => {
+    const accounts = { resumeSession: async () => session() };
+    const listPrivate = vi.fn().mockResolvedValue([{
+      caseId: "case-a",
+      lifecycle: "draft",
+      version: 3,
+      aiReviewStatus: "needs_more_information",
+      createdAt: "2026-09-14T00:00:00.000Z",
+      updatedAt: "2026-09-14T01:00:00.000Z",
+      materialCount: 2,
+    }]);
+    const response = await createCasesGetHandler({
+      accounts,
+      cases: { listPrivate },
+      isPersistenceAvailable: true,
+    })(new Request("http://localhost/api/cases", { headers: { cookie: "manbo_session=opaque-session" } }));
+
+    expect(response.status).toBe(200);
+    expect(listPrivate).toHaveBeenCalledWith(session().accountId);
+    const payload = await response.json();
+    expect(payload).toEqual({ cases: [{
+      caseId: "case-a",
+      lifecycle: "draft",
+      version: 3,
+      aiReviewStatus: "needs_more_information",
+      createdAt: "2026-09-14T00:00:00.000Z",
+      updatedAt: "2026-09-14T01:00:00.000Z",
+      materialCount: 2,
+    }] });
+    expect(JSON.stringify(payload)).not.toContain("accountId");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("does not query the case repository without a valid session", async () => {
+    const listPrivate = vi.fn();
+    const response = await createCasesGetHandler({
+      accounts: { resumeSession: async () => null },
+      cases: { listPrivate },
+      isPersistenceAvailable: true,
+    })(new Request("http://localhost/api/cases"));
+
+    expect(response.status).toBe(401);
+    expect(listPrivate).not.toHaveBeenCalled();
   });
 });
 

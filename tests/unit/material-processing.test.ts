@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   detectFileSignature,
@@ -229,6 +229,35 @@ describe("material quarantine and parsing", () => {
     await expect(state.repository.listAiEligibleContentRefs("material-a")).resolves.toEqual([
       "derived/material-a-v1",
     ]);
+  });
+
+  it("passes the validated parser payload to the repository for encrypted persistence", async () => {
+    const state = makeRepository();
+    const addDerivative = vi.spyOn(state.repository, "addDerivative");
+    const service = new MaterialProcessingService(
+      state.repository,
+      new ParserRegistry([{
+        id: "pdf-parser",
+        supports: (signature) => signature.detectedMime === "application/pdf",
+        parse: async () => ({
+          contentRef: "derived/material-a-v1",
+          text: "safe parsed text",
+          sourceSpans: [{ start: 0, end: 4 }],
+        }),
+      }]),
+    );
+
+    await service.process({ materialId: "material-a", ...cleanPdf, scanner: cleanScanner });
+
+    expect(addDerivative).toHaveBeenCalledWith({
+      contentRef: "derived/material-a-v1",
+      sourceMaterialId: "material-a",
+      parserId: "pdf-parser",
+      content: {
+        text: "safe parsed text",
+        sourceSpans: [{ start: 0, end: 4 }],
+      },
+    });
   });
 
   it("converts parser crashes into saved_unread without deleting the original", async () => {

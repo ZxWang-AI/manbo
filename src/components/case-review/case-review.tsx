@@ -4,6 +4,11 @@ import type { IndicatorAssessment } from "@/domain/assessment";
 import { Disclaimer } from "../common/disclaimer";
 import { EvidenceCoverage } from "./evidence-coverage";
 import { IndicatorMatrix } from "./indicator-matrix";
+import {
+  collectCaseSourceTraces,
+  SourceTraceList,
+  type MaterialSourceLabel,
+} from "./source-trace";
 
 export function CaseReview({
   patch,
@@ -12,8 +17,10 @@ export function CaseReview({
   onPatchChange,
   onExport,
   onConfirmExport,
+  onContinue,
   exportPreview,
   exportConfirmed = false,
+  materialSources = [],
 }: {
   patch: CasePatch;
   saved: boolean;
@@ -21,8 +28,10 @@ export function CaseReview({
   onPatchChange?: (patch: CasePatch) => void;
   onExport?: () => void;
   onConfirmExport?: () => void;
+  onContinue?: () => void;
   exportPreview?: { text: string; mediaType: string } | undefined;
   exportConfirmed?: boolean;
+  materialSources?: readonly MaterialSourceLabel[];
 }) {
   const facts = patch.facts ?? [];
   const jurisdictionConfirmed = Boolean(
@@ -30,6 +39,7 @@ export function CaseReview({
       patch.jurisdiction?.userCountry ||
       patch.jurisdiction?.productDestination,
   );
+  const sourceTraces = collectCaseSourceTraces(patch);
   return (
     <section className="case-review" aria-labelledby="review-title">
       <div className="section-heading">
@@ -40,6 +50,18 @@ export function CaseReview({
         <span className="review-state">需要你确认</span>
       </div>
       <p className="section-copy">下面是 AI 初步整理的内容。请逐项检查、修改或标记不确定；保存前不会对外提交。</p>
+      {sourceTraces.length > 0 ? (
+        <section className="review-section source-trace-section" aria-labelledby="source-trace-title">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">PROVENANCE</p>
+              <h2 id="source-trace-title">来源追溯</h2>
+            </div>
+          </div>
+          <p className="section-copy">来源标签用于帮助你核对整理依据；内部引用编号不会显示在页面上。</p>
+          <SourceTraceList traces={sourceTraces} materialSources={materialSources} />
+        </section>
+      ) : null}
       <div className="fact-list" aria-label="已整理事实">
         {facts.length === 0 ? <p className="empty-state">这轮还没有提取到结构化事实。</p> : null}
         {facts.map((fact) => (
@@ -110,7 +132,7 @@ export function CaseReview({
         <button type="button" className="primary-button" onClick={onSave} disabled={saved}>
           {saved ? "已保存" : "保存为私密档案"}
         </button>
-        <button type="button" className="secondary-button">继续补充</button>
+        <button type="button" className="secondary-button" onClick={onContinue}>继续补充</button>
         {onExport ? <button type="button" className="secondary-button" onClick={onExport}>预览导出</button> : null}
       </div>
       {exportPreview ? (

@@ -22,7 +22,7 @@ export const safetyFlagSchema = z.enum(safetyFlagValues);
 
 export const sourceTraceSchema = z
   .strictObject({
-    kind: z.enum(["conversation", "knowledge"]),
+    kind: z.enum(["conversation", "knowledge", "material"]),
     id: z.string().min(1),
     quote: z.string().min(1).optional(),
   });
@@ -84,6 +84,8 @@ export const evidenceCoverageItemSchema = z.strictObject({
   status: coverageStatusSchema,
   explanation: z.string().min(1),
   sourceMessageIds: z.array(z.string().min(1)),
+  /** Optional normalized references for coverage supported by materials or mixed sources. */
+  sourceTrace: z.array(sourceTraceSchema).optional(),
   safeOptions: z.array(z.string().min(1)),
 });
 

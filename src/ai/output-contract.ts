@@ -30,6 +30,7 @@ const factExtractionSchema = z.strictObject({
 export interface OutputValidationScope {
   conversationMessageIds: readonly string[];
   knowledgeSourceIds?: readonly string[];
+  materialContentRefs?: readonly string[];
 }
 
 function assertNoProhibitedOutput(value: unknown, path = "output"): void {
@@ -67,6 +68,7 @@ function assertSourceTraces(
   traces: readonly SourceTrace[],
   messageIds: ReadonlySet<string>,
   knowledgeIds: ReadonlySet<string>,
+  materialRefs: ReadonlySet<string>,
 ): void {
   for (const trace of traces) {
     if (trace.kind === "conversation" && !messageIds.has(trace.id)) {
@@ -75,6 +77,9 @@ function assertSourceTraces(
     if (trace.kind === "knowledge" && !knowledgeIds.has(trace.id)) {
       throw new Error(`Provider output references unknown knowledge source id: ${trace.id}`);
     }
+    if (trace.kind === "material" && !materialRefs.has(trace.id)) {
+      throw new Error(`Provider output references unknown material content ref: ${trace.id}`);
+    }
   }
 }
 
@@ -82,6 +87,7 @@ function makeScope(scope: OutputValidationScope) {
   return {
     messageIds: new Set(scope.conversationMessageIds),
     knowledgeIds: new Set(scope.knowledgeSourceIds ?? []),
+    materialRefs: new Set(scope.materialContentRefs ?? []),
   };
 }
 
@@ -96,13 +102,15 @@ export function validateFactExtraction(
 ): FactExtraction {
   assertNoProhibitedOutput(value);
   const parsed = factExtractionSchema.parse(value);
-  const { messageIds } = makeScope(scope);
+  const { messageIds, knowledgeIds, materialRefs } = makeScope(scope);
 
   for (const fact of parsed.facts) {
     assertConversationIds(fact.sourceMessageIds, messageIds);
+    if (fact.sourceTrace) assertSourceTraces(fact.sourceTrace, messageIds, knowledgeIds, materialRefs);
   }
   for (const item of parsed.timeline) {
     assertConversationIds(item.sourceMessageIds, messageIds);
+    if (item.sourceTrace) assertSourceTraces(item.sourceTrace, messageIds, knowledgeIds, materialRefs);
   }
 
   return parsed;
@@ -114,10 +122,10 @@ export function validateIndicatorAssessments(
 ): IndicatorAssessment[] {
   assertNoProhibitedOutput(value);
   const parsed = z.array(indicatorAssessmentSchema).min(1).parse(value);
-  const { messageIds, knowledgeIds } = makeScope(scope);
+  const { messageIds, knowledgeIds, materialRefs } = makeScope(scope);
 
   for (const item of parsed) {
-    assertSourceTraces(item.basis, messageIds, knowledgeIds);
+    assertSourceTraces(item.basis, messageIds, knowledgeIds, materialRefs);
   }
 
   return parsed;
@@ -129,10 +137,11 @@ export function validateEvidenceCoverage(
 ): EvidenceCoverageItem[] {
   assertNoProhibitedOutput(value);
   const parsed = z.array(evidenceCoverageItemSchema).min(1).parse(value);
-  const { messageIds } = makeScope(scope);
+  const { messageIds, knowledgeIds, materialRefs } = makeScope(scope);
 
   for (const item of parsed) {
     assertConversationIds(item.sourceMessageIds, messageIds);
+    if (item.sourceTrace) assertSourceTraces(item.sourceTrace, messageIds, knowledgeIds, materialRefs);
   }
 
   return parsed;
