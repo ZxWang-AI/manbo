@@ -2,6 +2,7 @@
 .worktrees/
 node_modules/
 app-data/
+__pycache__/
 .next/
 coverage/
 playwright-report/

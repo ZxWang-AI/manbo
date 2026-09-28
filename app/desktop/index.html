@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; img-src 'self' data:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>慢波 Manbo · 本地案件工作台</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #101417; color: #edf2ef; }
+    body { max-width: 960px; margin: 0 auto; padding: 48px 32px; }
+    header { border-bottom: 1px solid #344047; margin-bottom: 32px; padding-bottom: 24px; }
+    h1 { margin: 0 0 8px; font-size: 36px; letter-spacing: .04em; }
+    .notice { background: #18262a; border-left: 4px solid #65c6a0; padding: 16px; }
+    button { background: #65c6a0; color: #092019; border: 0; border-radius: 6px; padding: 10px 16px; font: inherit; cursor: pointer; margin-right: 8px; }
+    li { margin: 12px 0; padding: 12px; border-bottom: 1px solid #273238; }
+    .muted { color: #aab7b2; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>慢波 Manbo</h1>
+    <p class="muted">本地案件与材料整理工具</p>
+  </header>
+  <section class="notice" aria-label="数据边界">
+    <strong>案件和材料保存在本设备。</strong>
+    <p>导入不会上传。使用云端 AI 时，您确认发送的内容会离开设备，由所选模型供应商处理；本版本尚未启用模型发送或 Pi 文件/终端工具。</p>
+  </section>
+  <main>
+    <p><button id="create">新建案件</button><button id="refresh">刷新案件</button></p>
+    <ul id="cases" aria-live="polite"><li class="muted">正在读取本地案件…</li></ul>
+  </main>
+  <script src="./renderer.js"></script>
+</body>
+</html>
