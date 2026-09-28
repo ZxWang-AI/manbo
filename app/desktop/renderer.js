@@ -18,7 +18,9 @@ function selectedEvidenceIds() {
 }
 
 function updateSendState() {
-  sendButton.disabled = !selectedCase || selectedEvidenceIds().length === 0 || !document.querySelector('#prompt').value.trim();
+  const autonomous = document.querySelector('#mode').value === 'autonomous';
+  const hasEvidence = autonomous ? Boolean(selectedCase?.evidence.length) : selectedEvidenceIds().length > 0;
+  sendButton.disabled = !selectedCase || !hasEvidence || !document.querySelector('#prompt').value.trim();
 }
 
 function renderAttachments() {
@@ -157,5 +159,8 @@ document.querySelector('#create').addEventListener('click', async () => {
   await refresh(item.id);
 });
 document.querySelector('#refresh').addEventListener('click', () => refresh());
-for (const input of document.querySelectorAll('#prompt, #provider, #mode')) input.addEventListener('input', updateSendState);
+for (const input of document.querySelectorAll('#prompt, #provider, #mode')) {
+  input.addEventListener('input', updateSendState);
+  input.addEventListener('change', updateSendState);
+}
 refresh().catch((error) => setStatus(error.message, true));

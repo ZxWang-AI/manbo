@@ -49,5 +49,7 @@ test('renderer keeps attachments in a draft and only invokes confirmation after 
   assert.match(source, /confirmSend/);
   assert.match(source, /accepted:\s*true/);
   assert.match(source, /selectedEvidenceIds/);
+  assert.match(source, /autonomous/);
+  assert.match(source, /addEventListener\('change', updateSendState\)/);
   assert.doesNotMatch(source, /fetch\(|XMLHttpRequest|sendBeacon/);
 });
