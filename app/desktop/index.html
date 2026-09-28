@@ -6,14 +6,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>慢波 Manbo · 本地案件工作台</title>
   <style>
-    :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #101417; color: #edf2ef; }
-    body { max-width: 960px; margin: 0 auto; padding: 48px 32px; }
-    header { border-bottom: 1px solid #344047; margin-bottom: 32px; padding-bottom: 24px; }
-    h1 { margin: 0 0 8px; font-size: 36px; letter-spacing: .04em; }
-    .notice { background: #18262a; border-left: 4px solid #65c6a0; padding: 16px; }
-    button { background: #65c6a0; color: #092019; border: 0; border-radius: 6px; padding: 10px 16px; font: inherit; cursor: pointer; margin-right: 8px; }
-    li { margin: 12px 0; padding: 12px; border-bottom: 1px solid #273238; }
-    .muted { color: #aab7b2; }
+    :root { color-scheme: dark; font: 16px/1.5 ui-sans-serif, system-ui, sans-serif; background: #0b1115; color: #edf2ef; --line: #2a3b42; --muted: #9eb1ad; --mint: #8be0bc; --ink: #081613; }
+    * { box-sizing: border-box; }
+    body { max-width: 1180px; margin: 0 auto; padding: 34px 32px 64px; background: radial-gradient(circle at 88% 0%, #183a38 0, transparent 35%), #0b1115; }
+    header { border-bottom: 1px solid var(--line); margin-bottom: 24px; padding-bottom: 20px; display: flex; justify-content: space-between; align-items: end; gap: 24px; }
+    h1 { margin: 0 0 4px; font-size: 34px; letter-spacing: .02em; }
+    h2 { margin: 0 0 14px; font-size: 19px; }
+    .eyebrow { color: var(--mint); text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 700; }
+    .notice { background: #122521; border: 1px solid #2d6657; border-radius: 10px; padding: 15px 18px; margin-bottom: 24px; }
+    .notice p { margin: 5px 0 0; color: #c6d7d1; }
+    .layout { display: grid; grid-template-columns: minmax(290px, .85fr) minmax(420px, 1.5fr); gap: 20px; align-items: start; }
+    .panel { background: rgba(17, 27, 32, .88); border: 1px solid var(--line); border-radius: 12px; padding: 20px; box-shadow: 0 16px 46px rgba(0,0,0,.16); }
+    button { background: var(--mint); color: var(--ink); border: 0; border-radius: 6px; padding: 9px 14px; font: inherit; font-weight: 700; cursor: pointer; margin: 0 8px 8px 0; }
+    button.secondary { background: #20353a; color: #dbe9e5; border: 1px solid #395259; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    ul { list-style: none; padding: 0; margin: 12px 0 0; }
+    li { margin: 8px 0; padding: 12px; border: 1px solid #25363d; border-radius: 8px; background: #101b20; }
+    label { display: block; color: #dce9e4; font-weight: 600; }
+    input, textarea, select { width: 100%; margin-top: 6px; margin-bottom: 14px; background: #0c1519; color: #edf2ef; border: 1px solid #3a5057; border-radius: 6px; padding: 10px; font: inherit; }
+    textarea { min-height: 120px; resize: vertical; }
+    .evidence { display: flex; align-items: center; gap: 9px; font-weight: 500; }
+    .evidence input { width: auto; margin: 0; }
+    .muted { color: var(--muted); }
+    .status { min-height: 28px; margin-top: 12px; color: var(--mint); }
+    .empty { padding: 22px; text-align: center; border: 1px dashed #3a5057; border-radius: 8px; color: var(--muted); }
+    dialog { max-width: 640px; width: calc(100% - 40px); background: #101b20; color: #edf2ef; border: 1px solid #49656a; border-radius: 12px; padding: 0; box-shadow: 0 24px 90px #000; }
+    dialog::backdrop { background: rgba(1, 7, 9, .76); }
+    .dialog-body { padding: 24px; }
+    .dialog-actions { border-top: 1px solid var(--line); padding: 14px 24px; display: flex; justify-content: end; }
+    @media (max-width: 800px) { body { padding: 24px 16px; } .layout { grid-template-columns: 1fr; } header { display: block; } }
   </style>
 </head>
 <body>
@@ -24,11 +45,41 @@
   <section class="notice" aria-label="数据边界">
     <strong>案件和材料保存在本设备。</strong>
     <p>导入不会上传。使用云端 AI 时，您确认发送的内容会离开设备，由所选模型供应商处理；本版本尚未启用模型发送或 Pi 文件/终端工具。</p>
+    <p><strong>发送前确认：</strong>每次发送前会显示接收方、附件清单和任务范围。任务授权允许范围内连续调用；自治模式需显式选择，且原始文件始终不可修改。</p>
   </section>
   <main>
-    <p><button id="create">新建案件</button><button id="refresh">刷新案件</button></p>
-    <ul id="cases" aria-live="polite"><li class="muted">正在读取本地案件…</li></ul>
+    <div class="layout">
+      <section class="panel" aria-labelledby="cases-title">
+        <div class="eyebrow">01 · local vault</div>
+        <h2 id="cases-title">案件工作区</h2>
+        <p><button id="create">新建案件</button><button class="secondary" id="refresh">刷新案件</button></p>
+        <ul id="cases" aria-live="polite"><li class="muted">正在读取本地案件…</li></ul>
+      </section>
+      <section class="panel" id="workspace" aria-labelledby="workspace-title">
+        <div class="eyebrow">02 · draft a task</div>
+        <h2 id="workspace-title">选择附件，写下任务</h2>
+        <p class="muted">附件只会在你点击发送并完成确认后，才进入模型请求准备阶段。当前版本只生成本地授权快照，不会真正调用模型。</p>
+        <div id="attachment-list" class="empty">先在左侧创建或选择一个案件。</div>
+        <label for="provider">接收方标识</label>
+        <input id="provider" value="default-service" autocomplete="off">
+        <label for="mode">任务模式</label>
+        <select id="mode"><option value="task">任务授权（默认）</option><option value="autonomous">自治模式（显式开启）</option></select>
+        <label for="prompt">提示词</label>
+        <textarea id="prompt" placeholder="例如：整理时间线，逐条标出材料来源和仍需核实的信息。"></textarea>
+        <button id="send" disabled>预览并确认发送</button>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+      </section>
+    </div>
   </main>
+  <dialog id="confirmation">
+    <div class="dialog-body">
+      <div class="eyebrow">发送前确认</div>
+      <h2>确认本次附件和任务范围</h2>
+      <div id="confirmation-copy"></div>
+      <p class="muted">确认后会创建一次性授权。云端模型可能处理你选择的内容；本版本不会在服务器保存案件正文。</p>
+    </div>
+    <div class="dialog-actions"><button class="secondary" id="cancel-confirm">取消</button><button id="accept-confirm">确认，生成本地授权</button></div>
+  </dialog>
   <script src="./renderer.js"></script>
 </body>
 </html>

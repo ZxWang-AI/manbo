@@ -9,7 +9,7 @@ const htmlPath = new URL('./index.html', import.meta.url);
 test('preload exposes only the narrow case bridge', async () => {
   const source = await readFile(preloadPath, 'utf8');
   assert.match(source, /contextBridge\.exposeInMainWorld\(['"]manbo['"]/);
-  assert.deepEqual([...source.matchAll(/\n\s*(\w+):\s*\(/g)].map((match) => match[1]).sort(), ['createCase', 'importEvidence', 'listCases'].sort());
+  assert.deepEqual([...source.matchAll(/\n\s*(\w+):\s*\(/g)].map((match) => match[1]).sort(), ['confirmSend', 'createCase', 'importEvidence', 'listCases', 'previewSend'].sort());
   assert.doesNotMatch(source, /path|shell|execute|apiKey|token/i);
 });
 
@@ -22,6 +22,8 @@ test('desktop main declares renderer isolation and local-only IPC channels', asy
   assert.match(source, /case:create/);
   assert.match(source, /case:list/);
   assert.match(source, /evidence:import/);
+  assert.match(source, /send:preview/);
+  assert.match(source, /send:confirm/);
   assert.doesNotMatch(source, /shell\.openExternal|execute|apiKey|process\.env/i);
 });
 
@@ -30,8 +32,22 @@ test('desktop HTML is self-contained and explains the external model boundary', 
   assert.match(source, /案件和材料保存在本设备/);
   assert.match(source, /导入不会上传/);
   assert.match(source, /云端 AI/);
+  assert.match(source, /发送前确认/);
+  assert.match(source, /自治模式/);
+  for (const id of ['workspace', 'prompt', 'provider', 'mode', 'send', 'confirmation']) {
+    assert.match(source, new RegExp(`id=["']${id}["']`));
+  }
   assert.doesNotMatch(source, /<script[^>]+src=['"]https?:/i);
   assert.match(source, /<script src=['"]\.\/renderer\.js['"]><\/script>/);
   assert.doesNotMatch(source, /<script>(?!\s*<\/script>)[\s\S]*?<\/script>/i);
   await readFile(new URL('./renderer.js', import.meta.url), 'utf8');
+});
+
+test('renderer keeps attachments in a draft and only invokes confirmation after preview', async () => {
+  const source = await readFile(new URL('./renderer.js', import.meta.url), 'utf8');
+  assert.match(source, /previewSend/);
+  assert.match(source, /confirmSend/);
+  assert.match(source, /accepted:\s*true/);
+  assert.match(source, /selectedEvidenceIds/);
+  assert.doesNotMatch(source, /fetch\(|XMLHttpRequest|sendBeacon/);
 });

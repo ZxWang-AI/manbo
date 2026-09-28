@@ -35,6 +35,18 @@ ipcMain.handle('evidence:import', async (event, caseId) => {
   const { importEvidence } = await import('../core/cases.mjs');
   return importEvidence(vaultRoot(), caseId, result.filePaths[0]);
 });
+ipcMain.handle('send:preview', async (event, caseId, draft) => {
+  if (typeof caseId !== 'string') throw new Error('Invalid case ID');
+  const { readCase } = await import('../core/cases.mjs');
+  const { previewSend } = await import('../core/send.mjs');
+  return previewSend(await readCase(vaultRoot(), caseId), draft);
+});
+ipcMain.handle('send:confirm', async (event, caseId, draft, confirmation) => {
+  if (typeof caseId !== 'string') throw new Error('Invalid case ID');
+  const { readCase } = await import('../core/cases.mjs');
+  const { confirmSend } = await import('../core/send.mjs');
+  return confirmSend(await readCase(vaultRoot(), caseId), draft, confirmation);
+});
 
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => {
