@@ -1,5 +1,5 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron');
-const { readFile, rename, unlink, writeFile } = require('node:fs/promises');
+const { mkdir, readFile, rename, unlink, writeFile } = require('node:fs/promises');
 const { join } = require('node:path');
 
 function vaultRoot() {
@@ -20,7 +20,7 @@ function createSafeSecretStore() {
   }
   async function writeSecrets(secrets) {
     const temporary = join(settingsRoot(), `provider-secrets.${Date.now()}.tmp`);
-    await require('node:fs/promises').mkdir(settingsRoot(), { recursive: true });
+    await mkdir(settingsRoot(), { recursive: true });
     try {
       await writeFile(temporary, JSON.stringify(secrets), { flag: 'wx', mode: 0o600 });
       await rename(temporary, filePath);
@@ -107,6 +107,35 @@ ipcMain.handle('provider:delete', async (event, providerId) => {
   const { deleteProvider } = await import('../core/providers.mjs');
   await deleteProvider(providerSettings(), providerId);
   return { deleted: true };
+});
+ipcMain.handle('chat:load', async (event, caseId) => {
+  if (typeof caseId !== 'string') throw new Error('Invalid case ID');
+  const { readConversation } = await import('../core/conversations.mjs');
+  return readConversation(vaultRoot(), caseId);
+});
+ipcMain.handle('chat:send', async (event, caseId, draft, confirmation) => {
+  if (typeof caseId !== 'string') throw new Error('Invalid case ID');
+  const { readCase } = await import('../core/cases.mjs');
+  const { confirmSend } = await import('../core/send.mjs');
+  const { appendMessage } = await import('../core/conversations.mjs');
+  const { createLocalDemoBroker } = await import('../core/broker.mjs');
+  const result = confirmSend(await readCase(vaultRoot(), caseId), draft, confirmation);
+  const response = await createLocalDemoBroker().send({
+    authorization: result.authorization,
+    prompt: result.prompt,
+    evidenceIds: result.authorization.evidenceIds,
+  });
+  const userMessage = await appendMessage(vaultRoot(), caseId, {
+    role: 'user',
+    text: result.prompt,
+    evidenceIds: result.authorization.evidenceIds,
+  });
+  const assistantMessage = await appendMessage(vaultRoot(), caseId, {
+    role: 'assistant',
+    text: response.text,
+    evidenceIds: result.authorization.evidenceIds,
+  });
+  return Object.freeze({ ...result, messages: [userMessage, assistantMessage] });
 });
 
 app.whenReady().then(createWindow);

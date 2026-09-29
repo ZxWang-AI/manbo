@@ -9,7 +9,7 @@ const htmlPath = new URL('./index.html', import.meta.url);
 test('preload exposes only the narrow case bridge', async () => {
   const source = await readFile(preloadPath, 'utf8');
   assert.match(source, /contextBridge\.exposeInMainWorld\(['"]manbo['"]/);
-  assert.deepEqual([...source.matchAll(/\n\s*(\w+):\s*\(/g)].map((match) => match[1]).sort(), ['confirmSend', 'createCase', 'deleteProvider', 'importEvidence', 'listCases', 'listProviders', 'previewSend', 'saveProvider'].sort());
+  assert.deepEqual([...source.matchAll(/\n\s*(\w+):\s*\(/g)].map((match) => match[1]).sort(), ['confirmSend', 'createCase', 'deleteProvider', 'importEvidence', 'listCases', 'listProviders', 'loadConversation', 'previewSend', 'saveProvider', 'sendMessage'].sort());
   assert.doesNotMatch(source, /path|shell|execute|apiKey|token/i);
 });
 
@@ -27,6 +27,8 @@ test('desktop main declares renderer isolation and local-only IPC channels', asy
   assert.match(source, /provider:list/);
   assert.match(source, /provider:save/);
   assert.match(source, /provider:delete/);
+  assert.match(source, /chat:load/);
+  assert.match(source, /chat:send/);
   assert.match(source, /safeStorage/);
   assert.doesNotMatch(source, /shell\.openExternal|execute|apiKey|process\.env/i);
 });
@@ -38,7 +40,7 @@ test('desktop HTML is self-contained and explains the external model boundary', 
   assert.match(source, /云端 AI/);
   assert.match(source, /发送前确认/);
   assert.match(source, /自治模式/);
-  for (const id of ['workspace', 'prompt', 'provider', 'mode', 'send', 'confirmation']) {
+  for (const id of ['workspace', 'prompt', 'provider', 'mode', 'send', 'confirmation', 'settings', 'settings-dialog', 'conversation', 'pause-task', 'revoke-task']) {
     assert.match(source, new RegExp(`id=["']${id}["']`));
   }
   assert.doesNotMatch(source, /<script[^>]+src=['"]https?:/i);
@@ -50,10 +52,14 @@ test('desktop HTML is self-contained and explains the external model boundary', 
 test('renderer keeps attachments in a draft and only invokes confirmation after preview', async () => {
   const source = await readFile(new URL('./renderer.js', import.meta.url), 'utf8');
   assert.match(source, /previewSend/);
-  assert.match(source, /confirmSend/);
+  assert.match(source, /sendMessage/);
   assert.match(source, /accepted:\s*true/);
   assert.match(source, /selectedEvidenceIds/);
   assert.match(source, /autonomous/);
   assert.match(source, /addEventListener\('change', updateSendState\)/);
+  assert.match(source, /loadConversation/);
+  assert.match(source, /sendMessage/);
+  assert.match(source, /listProviders/);
+  assert.match(source, /saveProvider/);
   assert.doesNotMatch(source, /fetch\(|XMLHttpRequest|sendBeacon/);
 });

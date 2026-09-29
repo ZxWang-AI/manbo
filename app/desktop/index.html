@@ -29,6 +29,13 @@
     .evidence input { width: auto; margin: 0; }
     .muted { color: var(--muted); }
     .status { min-height: 28px; margin-top: 12px; color: var(--mint); }
+    .conversation { min-height: 180px; max-height: 360px; overflow-y: auto; display: grid; gap: 10px; margin: 14px 0 16px; padding: 4px; }
+    .message { max-width: 88%; padding: 12px 14px; border: 1px solid #2a4248; border-radius: 10px; white-space: pre-wrap; }
+    .message.user { justify-self: end; background: #1d3834; border-color: #397564; }
+    .message.assistant { justify-self: start; background: #111e24; }
+    .message-meta { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+    .task-actions { display: flex; justify-content: end; gap: 8px; }
+    .task-actions button { margin: 0; }
     .empty { padding: 22px; text-align: center; border: 1px dashed #3a5057; border-radius: 8px; color: var(--muted); }
     dialog { max-width: 640px; width: calc(100% - 40px); background: #101b20; color: #edf2ef; border: 1px solid #49656a; border-radius: 12px; padding: 0; box-shadow: 0 24px 90px #000; }
     dialog::backdrop { background: rgba(1, 7, 9, .76); }
@@ -40,7 +47,7 @@
 <body>
   <header>
     <h1>慢波 Manbo</h1>
-    <p class="muted">本地案件与材料整理工具</p>
+    <div><p class="muted">本地案件与材料整理工具</p><button class="secondary" id="settings">模型设置</button></div>
   </header>
   <section class="notice" aria-label="数据边界">
     <strong>案件和材料保存在本设备。</strong>
@@ -57,16 +64,17 @@
       </section>
       <section class="panel" id="workspace" aria-labelledby="workspace-title">
         <div class="eyebrow">02 · draft a task</div>
-        <h2 id="workspace-title">选择附件，写下任务</h2>
-        <p class="muted">附件只会在你点击发送并完成确认后，才进入模型请求准备阶段。当前版本只生成本地授权快照，不会真正调用模型。</p>
+        <h2 id="workspace-title">和 AI 对话</h2>
+        <p class="muted">对话记录保存在本机。当前默认使用本地演示模型，不会发送到云端；接入真实模型前仍需完成安全验证。</p>
+        <div id="conversation" class="conversation" aria-live="polite"><div class="empty">选择案件后加载本地对话。</div></div>
         <div id="attachment-list" class="empty">先在左侧创建或选择一个案件。</div>
-        <label for="provider">接收方标识</label>
-        <input id="provider" value="default-service" autocomplete="off">
+        <label for="provider">模型接收方</label>
+        <select id="provider"><option value="local-demo">本地演示模型（不联网）</option></select>
         <label for="mode">任务模式</label>
         <select id="mode"><option value="task">任务授权（默认）</option><option value="autonomous">自治模式（显式开启）</option></select>
         <label for="prompt">提示词</label>
         <textarea id="prompt" placeholder="例如：整理时间线，逐条标出材料来源和仍需核实的信息。"></textarea>
-        <button id="send" disabled>预览并确认发送</button>
+        <div class="task-actions"><button class="secondary" id="pause-task" disabled>暂停任务</button><button class="secondary" id="revoke-task" disabled>撤销授权</button><button id="send" disabled>预览并发送</button></div>
         <div id="status" class="status" role="status" aria-live="polite"></div>
       </section>
     </div>
@@ -78,7 +86,21 @@
       <div id="confirmation-copy"></div>
       <p class="muted">确认后会创建一次性授权。云端模型可能处理你选择的内容；本版本不会在服务器保存案件正文。</p>
     </div>
-    <div class="dialog-actions"><button class="secondary" id="cancel-confirm">取消</button><button id="accept-confirm">确认，生成本地授权</button></div>
+    <div class="dialog-actions"><button class="secondary" id="cancel-confirm">取消</button><button id="accept-confirm">确认并发送</button></div>
+  </dialog>
+  <dialog id="settings-dialog">
+    <div class="dialog-body">
+      <div class="eyebrow">模型设置</div>
+      <h2>配置模型接收方</h2>
+      <p class="muted">Key 只会交给本机系统凭据存储。页面和案件记录不会读取或显示已保存的 Key。</p>
+      <label for="provider-id">Provider ID</label><input id="provider-id" placeholder="例如 custom-openai">
+      <label for="provider-name">显示名称</label><input id="provider-name" placeholder="我的模型">
+      <label for="provider-model">模型名称</label><input id="provider-model" placeholder="模型 ID">
+      <label for="provider-endpoint">HTTPS Endpoint</label><input id="provider-endpoint" placeholder="https://example.com/v1/chat/completions">
+      <label for="provider-secret">API Key（保存后不会再次显示）</label><input id="provider-secret" type="password" autocomplete="new-password">
+      <div id="provider-status" class="status" role="status"></div>
+    </div>
+    <div class="dialog-actions"><button class="secondary" id="close-settings">关闭</button><button class="secondary" id="delete-provider">删除选中 Provider</button><button id="save-provider">保存 Provider</button></div>
   </dialog>
   <script src="./renderer.js"></script>
 </body>

@@ -9,4 +9,6 @@ contextBridge.exposeInMainWorld('manbo', Object.freeze({
   listProviders: () => ipcRenderer.invoke('provider:list'),
   saveProvider: (config, secret) => ipcRenderer.invoke('provider:save', config, secret),
   deleteProvider: (providerId) => ipcRenderer.invoke('provider:delete', providerId),
+  loadConversation: (caseId) => ipcRenderer.invoke('chat:load', caseId),
+  sendMessage: (caseId, draft, confirmation) => ipcRenderer.invoke('chat:send', caseId, draft, confirmation),
 }));
