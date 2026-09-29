@@ -9,7 +9,7 @@ const htmlPath = new URL('./index.html', import.meta.url);
 test('preload exposes only the narrow case bridge', async () => {
   const source = await readFile(preloadPath, 'utf8');
   assert.match(source, /contextBridge\.exposeInMainWorld\(['"]manbo['"]/);
-  assert.deepEqual([...source.matchAll(/\n\s*(\w+):\s*\(/g)].map((match) => match[1]).sort(), ['confirmSend', 'createCase', 'importEvidence', 'listCases', 'previewSend'].sort());
+  assert.deepEqual([...source.matchAll(/\n\s*(\w+):\s*\(/g)].map((match) => match[1]).sort(), ['confirmSend', 'createCase', 'deleteProvider', 'importEvidence', 'listCases', 'listProviders', 'previewSend', 'saveProvider'].sort());
   assert.doesNotMatch(source, /path|shell|execute|apiKey|token/i);
 });
 
@@ -24,6 +24,10 @@ test('desktop main declares renderer isolation and local-only IPC channels', asy
   assert.match(source, /evidence:import/);
   assert.match(source, /send:preview/);
   assert.match(source, /send:confirm/);
+  assert.match(source, /provider:list/);
+  assert.match(source, /provider:save/);
+  assert.match(source, /provider:delete/);
+  assert.match(source, /safeStorage/);
   assert.doesNotMatch(source, /shell\.openExternal|execute|apiKey|process\.env/i);
 });
 
