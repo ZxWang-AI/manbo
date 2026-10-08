@@ -9,7 +9,7 @@ const htmlPath = new URL('./index.html', import.meta.url);
 test('preload exposes only the narrow case bridge', async () => {
   const source = await readFile(preloadPath, 'utf8');
   assert.match(source, /contextBridge\.exposeInMainWorld\(['"]manbo['"]/);
-  assert.deepEqual([...source.matchAll(/\n\s*(\w+):\s*\(/g)].map((match) => match[1]).sort(), ['confirmSend', 'createCase', 'deleteProvider', 'importEvidence', 'listCases', 'listProviders', 'loadConversation', 'previewSend', 'saveProvider', 'sendMessage'].sort());
+  assert.deepEqual([...source.matchAll(/\n\s*(\w+):\s*\(/g)].map((match) => match[1]).sort(), ['abortChat', 'confirmSend', 'createCase', 'createConversation', 'deleteProvider', 'importEvidence', 'listCases', 'listConversations', 'listProviders', 'loadConversation', 'loadConversationRecord', 'previewChat', 'previewSend', 'saveProvider', 'sendChat', 'sendMessage'].sort());
   assert.doesNotMatch(source, /path|shell|execute|apiKey|token/i);
 });
 
@@ -29,6 +29,11 @@ test('desktop main declares renderer isolation and local-only IPC channels', asy
   assert.match(source, /provider:delete/);
   assert.match(source, /chat:load/);
   assert.match(source, /chat:send/);
+  assert.match(source, /conversation:list/);
+  assert.match(source, /conversation:create/);
+  assert.match(source, /chat:preview-v2/);
+  assert.match(source, /chat:send-v2/);
+  assert.match(source, /chat:abort/);
   assert.match(source, /safeStorage/);
   assert.doesNotMatch(source, /shell\.openExternal|execute|apiKey|process\.env/i);
 });

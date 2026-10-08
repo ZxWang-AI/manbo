@@ -11,4 +11,10 @@ contextBridge.exposeInMainWorld('manbo', Object.freeze({
   deleteProvider: (providerId) => ipcRenderer.invoke('provider:delete', providerId),
   loadConversation: (caseId) => ipcRenderer.invoke('chat:load', caseId),
   sendMessage: (caseId, draft, confirmation) => ipcRenderer.invoke('chat:send', caseId, draft, confirmation),
+  listConversations: () => ipcRenderer.invoke('conversation:list'),
+  createConversation: (options) => ipcRenderer.invoke('conversation:create', options),
+  loadConversationRecord: (conversationId) => ipcRenderer.invoke('conversation:load', conversationId),
+  previewChat: (input) => ipcRenderer.invoke('chat:preview-v2', input),
+  sendChat: (input) => ipcRenderer.invoke('chat:send-v2', input),
+  abortChat: (requestId) => ipcRenderer.invoke('chat:abort', requestId),
 }));
