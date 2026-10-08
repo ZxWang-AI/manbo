@@ -99,6 +99,8 @@ test('default gateway supplies explicit memory credentials and disables implicit
   assert.equal(options.refreshOnCreate, false);
   assert.equal(await options.credentials.read('custom'), undefined);
   assert.deepEqual(await options.credentials.list(), []);
+  await assert.rejects(options.credentials.modify('custom', () => 'synthetic-key'), /persistence is disabled/);
+  await assert.rejects(options.credentials.delete('custom'), /persistence is disabled/);
   assert.equal('apiKey' in captured.registrations[0], false);
   assert.equal(captured.requests[0].options.apiKey, 'synthetic-key');
   assert.equal(captured.requests[0].options.maxRetries, 0);

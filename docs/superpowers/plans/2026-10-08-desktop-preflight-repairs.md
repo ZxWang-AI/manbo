@@ -53,6 +53,8 @@
 
 **Blocked checkpoint (2026-10-08):** The override was tried, but `npm install` and `npm update brace-expansion --ignore-scripts` both retained 5.0.9. `npm audit fix --dry-run --ignore-scripts --json` proposed zero changes and still reported the high finding. Pi 0.87.1 ships `npm-shrinkwrap.json` (`hasShrinkwrap: true` in the application lockfile). Removed the ineffective override and incidental lock metadata changes; Pi/Electron pins are unchanged. Stop dependency implementation here pending review of an explicit SDK upgrade or reproducible upstream patch strategy. Do not mark the audit or packaging gate complete. Task 4 may document this failure and deliver the already-approved source push independently.
 
+**Superseded checkpoint (2026-10-08):** The user subsequently approved the separate Pi 1.1.0 evaluation plan. Its clean replay, no-discovery repair, 64/64 fixed-Node-24 tests and zero-finding production/full audits passed, and the reviewed tree was adopted on main. The failed override steps above remain unchecked: they did not succeed and were not used. See `2026-10-08-pi-dependency-evaluation.md` and the readiness appendix for the replacement evidence. The dependency subgate is resolved; all other public Alpha gates remain required.
+
 ## Task 4: Report evidence and write the packaging spec
 
 **Files:** Update `docs/testing/2026-10-08-desktop-release-readiness.md` and the current-status paragraph in `README.md`; create `docs/superpowers/specs/2026-10-08-desktop-alpha-release-design.md`.

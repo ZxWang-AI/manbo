@@ -106,10 +106,55 @@
 
 1.0.4/1.1.0 对 Pi 子包均使用 caret 范围；只固定顶层版本不会自动使子包同版或得到可复现树。后续评估必须记录实际解析版本和完整 lockfile，再用独立干净安装重放该 lockfile；不能把浮动解析结果写成已锁定或以顶层 manifest 代替实际树。
 
-### 独立处理策略提案（待用户批准，不是实施授权）
+### 独立处理策略提案（后续已批准推荐路线，执行证据见文末）
 
 1. **推荐：受控评估 Pi 1.1.0。** 在应用副本的独立临时评估目录中固定顶层 1.1.0，记录实际依赖与 lockfile；先进行无安装脚本的依赖审查，再运行受控兼容测试。补充零可调用/注册工具、无全局/项目资源发现、无凭据持久化与额外请求的回归。不得启用 MCP、codemode、文件/终端或自治能力。只有干净安装审计无未处置生产 high/critical 且原有与新增隔离测试全部通过，才将已验证的依赖变更纳入 main。若需要改变现有 API/会话适配器，须先给出失败测试和针对性修复；不因测试失败改弱断言。此路线利用已发布上游修复，代价是跨版本兼容审查；不宣称评估一定成功。
 2. **备选：维护 0.87.1 的可复现修补分发。** 需固定上游来源/完整性、修补依赖锁和发布包、审核许可证并维护与原包差异；独立干净安装及同等回归仍不可省略。当前未验证这条路线，不手改本机 node_modules、不继续采用已证明无效的根 override。维护成本高于采用现有上游修复，不推荐作为首选。
 3. **备选：保留当前依赖并暂停发布。** 不增加 SDK 迁移风险，但生产 high 告警保留，不能生成对外 Alpha 资产；等待后仍须审阅与验证修复。
 
 推荐路线的批准仅允许受控依赖评估及通过门禁后的定向修复，不授权扩展 agent 权限、自动升级 Electron、创建公开 Release、使用真实案件或真实 API Key。独立策略确认后先制定该子项目的精确实施计划；材料读取、历史/IPC/网络/凭据边界分别规划，全部结案后才规划打包。
+
+## 追加：Pi 1.1.0 受控评估与采用（2026-10-08）
+
+用户回复“同意”批准上述推荐路线。按 `docs/superpowers/plans/2026-10-08-pi-dependency-evaluation.md`，先在独立应用副本中评估，再用第二个独立目录重放锁文件，全部子门禁通过后采用到本地优先 main。上文“Pi 0.87.1”“high 未解决”“策略待批准”等表述保留为历史检查点；本节是当前依赖状态。没有修改旧平台工作树或两份备份分支。
+
+### 实际解析树与复现证据
+
+| 检查 | 当前结果 | 证明范围 |
+| --- | --- | --- |
+| 顶层 Pi / 实际 Pi 子包 | coding-agent、agent-core、ai、chord、codemode、mcp、telemetry、tui 均为 1.1.0 | 实际 lockfile 与安装树；子包不是仅凭顶层 pin 推断 |
+| 漏洞依赖 | brace-expansion 5.0.12；balanced-match 4.0.4；minimatch 10.2.6 | 实际树不再包含先前的 5.0.9 |
+| Electron | manifest 与原 lock 条目仍为 44.4.5 | 没有升级 Electron；不是原生运行验收 |
+| 原有测试在候选中 | 未改动时 60/60 | SDK 迁移基线，未以削弱断言换兼容 |
+| 最终全套 / Agent 专项 | 主线 Node v24.21.0：64/64、23/23 | Windows x64；真实 SDK 与受控 event-stream 替身 |
+| 候选 / 第二目录 / 主线 | 均通过全套 64/64；候选也在原 Node 25 下通过 | 两次干净安装与主线重装；不证明另外三个原生目标 |
+| 生产和完整 audit | 候选、重放、主线均为 0 项告警 | 当前 npm 公告匹配结果，不是供应链无风险证明 |
+| 锁文件重放 | 固定 Node 24 的 `npm ci --ignore-scripts --no-fund` 成功，ci 前后锁字节不变 | 未执行生命周期、未自动下载 Electron 原生运行时 |
+| 实际安装树比较 | 候选、重放、主线去掉顶层 path 后，规范化 `npm ls --all --json` SHA-256 相同 | Windows 当前解析/安装结果；不是跨平台二进制相同声明 |
+
+采用的 lockfile SHA-256：`1b33de2e83af2d58f569ef477e8abdbdb2c1160d92f17c82112b1f500990aa90`。
+规范化安装树 SHA-256：`82cd413072db057250023e044295e3ee17ddce23592b709cc4e233645e2783d3`。
+
+Node v24.21.0 来自官方 `https://nodejs.org/dist/v24.21.0/` 的 Windows x64 ZIP；执行前与同版本 SHASUMS256.txt 匹配，ZIP SHA-256 为 `158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541`。这只是官方清单完整性核对，没有验证发布者签名；没有全局更换系统 Node。
+
+新锁有 154 个 packages 条目（含应用根），完整审计元数据统计 153 个依赖，Windows ci 实际安装 128 个包。旧 Pi shrinkwrap 被移除后出现大量 hoist/路径变化；不是只替换一个间接依赖。实际版本变化也包括 openai 6.40.0→7.19.0、上游供应商/AWS/Smithy SDK、ws、gaxios、google-auth-library 和类型包；新增 pi-mcp、pi-codemode、quickjs-wasi 3.6.2。全部来源为 npm registry，锁中无 hasShrinkwrap；完整变化由提交的 lockfile 保留。没有新增应用 provider 功能、MCP/codemode 或其他工具权限。
+
+### 生命周期与既有 Electron 运行时
+
+安装全程禁用 scripts。锁中标记 hasInstallScript 的实际包已读取发布 manifest 与相应脚本：`@google/genai@2.21.0` 的 preinstall 是提示性 echo；`esbuild@0.28.2` 的 postinstall 会验证/安装二进制，可能走 npm/下载 fallback；`protobufjs@7.6.6` 的 postinstall 读取 manifest 并检查版本提示。本轮均未执行。实际树没有 binding.gyp；Pi、quickjs-wasi 没有安装生命周期，quickjs 分发的 WASM/原生资源仍须在未来产物清单中审阅，不能因当前未启用就宣称可安全打包。npm 对 node-domexception 1.0.0 有弃用提示，它不是本次 audit 漏洞，但不把结果描述为“完全无警告”。
+
+Electron 44.4.5 发布 manifest 没有 postinstall；原生安装脚本须显式调用，本轮未调用。主线 ci 会移除原已安装的 native 文件，因此先将明确的 electron/dist 和 path.txt 复制到独立临时备份，ci 后仅恢复同版本原文件。73 个 dist 文件的 SHA-256 与备份逐一相同，path.txt 仍为 electron.exe；electron.exe SHA-256 为 `bd14928e0728366fd3f41499cb398ff3f4304dab259a3e605077899a6f8c748e`。这是维护用户既有运行时，不是新安装或 Electron 启动/三平台验收；未手工修改依赖源码。
+
+### 隐式资源发现的 red/green 与隔离限制
+
+新增真实 SDK 回归先暴露原适配器仍执行 24 次项目 .pi 资源探测；不是类型/导入错误。即使 DefaultResourceLoader 的 no-resource 开关全关，仍会发现项目路径，之后过滤不能证明没有访问。因此使用 Pi 公共 ResourceLoader 接口返回固定 prompt 和不可变空资源，不构造 DefaultResourceLoader，也不调用文件/包发现。每个会话有独立空 extension runtime；reload 不做 I/O，extendResources 拒绝非空或未知资源注入。显式传入临时空 agentDir，仍使用内存 settings/session/credentials。
+
+三项新 loader 契约测试加一项真实 SDK 发现/副作用测试，使总测试由 60 增为 64。原测试保留其安全契约，改为检查公共接口；实际 active、callable、registered 工具和扩展全部为空，并在 reload 后复查。凭据 modify/delete 也明确验证拒绝持久写。
+
+发现测试使用合成项目/全局 .pi、AGENTS.md、settings/auth/models 和恶意扩展 fixture；先用真实 DefaultResourceLoader 正控确认 I/O 观测有效，再观测实际适配器创建、一次受控 prompt、重载和销毁。资源访问记录为零，受控调用恰一次；阻断所列 subprocess、fetch、HTTP/HTTPS 和 socket API，没有记录到额外副作用，所有合成原件字节保持不变。SDK 和 stream helper 在 instrumentation 前已导入；该测试不是覆盖所有 import-time I/O 或整个操作系统的沙箱证明，也不替代 DNS/IPv6、重定向、HTTP/SSE、凭据后端或 Electron 验收。
+
+### 当前结论及仍未完成的门禁
+
+原阻断项 7 的生产依赖 high 已解决；无效根 override 路线保持失败/被替代，未改写为成功。Pi 权限没有扩大，文件、终端、MCP、codemode、独立联网与自治继续禁用。BYOK、本地持久化、仅用户确认内容送所选云供应商和原件不改的边界不变。
+
+材料实算哈希/大小/编码/路径、真实 PDF 提取、历史敏感授权/并发迁移、UI 取消/重复确认/IPC sender、provider 纯文本显示、DNS/IPv6/重定向/超时/请求限额，以及三平台凭据和安装验收均仍未结案。知识库检索、结构化证据链、用户导出和举报操作引导仍不属于已完成能力。没有生成安装包、tag 或公开 Release；发布总门禁继续未通过。
