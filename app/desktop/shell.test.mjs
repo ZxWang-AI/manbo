@@ -40,12 +40,11 @@ test('desktop main declares renderer isolation and local-only IPC channels', asy
 
 test('desktop HTML is self-contained and explains the external model boundary', async () => {
   const source = await readFile(htmlPath, 'utf8');
-  assert.match(source, /案件和材料保存在本设备/);
+  assert.match(source, /本机优先/);
   assert.match(source, /导入不会上传/);
-  assert.match(source, /云端 AI/);
-  assert.match(source, /发送前确认/);
-  assert.match(source, /自治模式/);
-  for (const id of ['workspace', 'prompt', 'provider', 'mode', 'send', 'confirmation', 'settings', 'settings-dialog', 'conversation', 'pause-task', 'revoke-task']) {
+  assert.match(source, /模型供应商/);
+  assert.match(source, /确认本次发送范围/);
+  for (const id of ['workspace', 'composer-input', 'provider', 'send', 'confirmation', 'settings', 'settings-dialog', 'message-stream', 'sidebar', 'evidence-rail', 'attachment-chips']) {
     assert.match(source, new RegExp(`id=["']${id}["']`));
   }
   assert.doesNotMatch(source, /<script[^>]+src=['"]https?:/i);
@@ -56,14 +55,12 @@ test('desktop HTML is self-contained and explains the external model boundary', 
 
 test('renderer keeps attachments in a draft and only invokes confirmation after preview', async () => {
   const source = await readFile(new URL('./renderer.js', import.meta.url), 'utf8');
-  assert.match(source, /previewSend/);
-  assert.match(source, /sendMessage/);
+  assert.match(source, /previewChat/);
+  assert.match(source, /sendChat/);
   assert.match(source, /accepted:\s*true/);
   assert.match(source, /selectedEvidenceIds/);
-  assert.match(source, /autonomous/);
-  assert.match(source, /addEventListener\('change', updateSendState\)/);
-  assert.match(source, /loadConversation/);
-  assert.match(source, /sendMessage/);
+  assert.match(source, /loadConversationRecord/);
+  assert.match(source, /listConversations/);
   assert.match(source, /listProviders/);
   assert.match(source, /saveProvider/);
   assert.doesNotMatch(source, /fetch\(|XMLHttpRequest|sendBeacon/);

@@ -4,104 +4,27 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; img-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>慢波 Manbo · 本地案件工作台</title>
+  <title>慢波 Manbo · 对话工作台</title>
   <style>
-    :root { color-scheme: dark; font: 16px/1.5 ui-sans-serif, system-ui, sans-serif; background: #0b1115; color: #edf2ef; --line: #2a3b42; --muted: #9eb1ad; --mint: #8be0bc; --ink: #081613; }
-    * { box-sizing: border-box; }
-    body { max-width: 1180px; margin: 0 auto; padding: 34px 32px 64px; background: radial-gradient(circle at 88% 0%, #183a38 0, transparent 35%), #0b1115; }
-    header { border-bottom: 1px solid var(--line); margin-bottom: 24px; padding-bottom: 20px; display: flex; justify-content: space-between; align-items: end; gap: 24px; }
-    h1 { margin: 0 0 4px; font-size: 34px; letter-spacing: .02em; }
-    h2 { margin: 0 0 14px; font-size: 19px; }
-    .eyebrow { color: var(--mint); text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 700; }
-    .notice { background: #122521; border: 1px solid #2d6657; border-radius: 10px; padding: 15px 18px; margin-bottom: 24px; }
-    .notice p { margin: 5px 0 0; color: #c6d7d1; }
-    .layout { display: grid; grid-template-columns: minmax(290px, .85fr) minmax(420px, 1.5fr); gap: 20px; align-items: start; }
-    .panel { background: rgba(17, 27, 32, .88); border: 1px solid var(--line); border-radius: 12px; padding: 20px; box-shadow: 0 16px 46px rgba(0,0,0,.16); }
-    button { background: var(--mint); color: var(--ink); border: 0; border-radius: 6px; padding: 9px 14px; font: inherit; font-weight: 700; cursor: pointer; margin: 0 8px 8px 0; }
-    button.secondary { background: #20353a; color: #dbe9e5; border: 1px solid #395259; }
-    button:disabled { opacity: .45; cursor: not-allowed; }
-    ul { list-style: none; padding: 0; margin: 12px 0 0; }
-    li { margin: 8px 0; padding: 12px; border: 1px solid #25363d; border-radius: 8px; background: #101b20; }
-    label { display: block; color: #dce9e4; font-weight: 600; }
-    input, textarea, select { width: 100%; margin-top: 6px; margin-bottom: 14px; background: #0c1519; color: #edf2ef; border: 1px solid #3a5057; border-radius: 6px; padding: 10px; font: inherit; }
-    textarea { min-height: 120px; resize: vertical; }
-    .evidence { display: flex; align-items: center; gap: 9px; font-weight: 500; }
-    .evidence input { width: auto; margin: 0; }
-    .muted { color: var(--muted); }
-    .status { min-height: 28px; margin-top: 12px; color: var(--mint); }
-    .conversation { min-height: 180px; max-height: 360px; overflow-y: auto; display: grid; gap: 10px; margin: 14px 0 16px; padding: 4px; }
-    .message { max-width: 88%; padding: 12px 14px; border: 1px solid #2a4248; border-radius: 10px; white-space: pre-wrap; }
-    .message.user { justify-self: end; background: #1d3834; border-color: #397564; }
-    .message.assistant { justify-self: start; background: #111e24; }
-    .message-meta { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
-    .task-actions { display: flex; justify-content: end; gap: 8px; }
-    .task-actions button { margin: 0; }
-    .empty { padding: 22px; text-align: center; border: 1px dashed #3a5057; border-radius: 8px; color: var(--muted); }
-    dialog { max-width: 640px; width: calc(100% - 40px); background: #101b20; color: #edf2ef; border: 1px solid #49656a; border-radius: 12px; padding: 0; box-shadow: 0 24px 90px #000; }
-    dialog::backdrop { background: rgba(1, 7, 9, .76); }
-    .dialog-body { padding: 24px; }
-    .dialog-actions { border-top: 1px solid var(--line); padding: 14px 24px; display: flex; justify-content: end; }
-    @media (max-width: 800px) { body { padding: 24px 16px; } .layout { grid-template-columns: 1fr; } header { display: block; } }
+    :root { color-scheme:dark; --bg:#091012; --panel:#101a1d; --line:#263a3e; --bright:#3b5a59; --text:#eaf2ed; --muted:#8da5a2; --mint:#a6e7c8; --dim:#4d8976; --amber:#eacb8a; --danger:#ff9b8f; font:15px/1.5 ui-monospace,Consolas,monospace; }
+    * { box-sizing:border-box; } html,body { height:100%; } body { margin:0; color:var(--text); background:radial-gradient(circle at 60% -20%,#234b44 0,transparent 42%),var(--bg); overflow:hidden; }
+    button,input,textarea,select { font:inherit; } button { color:var(--text); background:#1d3134; border:1px solid #345256; border-radius:7px; padding:9px 13px; cursor:pointer; transition:.2s ease; } button:hover:not(:disabled){border-color:var(--dim);transform:translateY(-1px)} button.primary{color:#092018;background:var(--mint);border-color:var(--mint);font-weight:600} button.ghost{background:transparent;border-color:transparent;color:var(--muted)} button:disabled{cursor:not-allowed;opacity:.42;transform:none}
+    .app-shell{height:100vh;display:grid;grid-template-columns:250px minmax(480px,1fr) 300px}.sidebar,.evidence-rail{background:#091012cc;border-right:1px solid var(--line);min-width:0;overflow:auto}.evidence-rail{border-right:0;border-left:1px solid var(--line);padding:24px 18px}.sidebar{padding:22px 14px}.brand{padding:4px 10px 24px;border-bottom:1px solid var(--line);margin-bottom:18px}.brand-mark{color:var(--mint);font:650 24px Georgia,serif;letter-spacing:.03em}.brand-sub{color:var(--muted);font-size:10px;letter-spacing:.16em;text-transform:uppercase;margin-top:5px}.eyebrow{color:var(--mint);font-size:10px;letter-spacing:.14em;text-transform:uppercase}.section-label{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase;padding:18px 10px 7px}.nav-list{display:grid;gap:3px}.nav-item{width:100%;text-align:left;background:transparent;border-color:transparent;padding:9px 10px;color:#bcd0cb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nav-item.active{color:var(--text);background:#17272a;border-color:#2d4b4a}.nav-item small{color:var(--muted);display:block;font-size:10px;margin-top:2px}.new-chat{width:100%;text-align:left;padding:12px;color:#092018;background:var(--mint);font-weight:650}
+    .chat-stage{min-width:0;display:grid;grid-template-rows:auto auto 1fr auto;height:100vh}.chat-header{padding:22px 34px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:16px}.chat-title{font:500 23px Georgia,serif;letter-spacing:.01em}.chat-subtitle{color:var(--muted);font-size:11px;margin-top:3px}.header-actions{display:flex;align-items:center;gap:7px}.badge{border:1px solid #35534d;border-radius:999px;color:var(--mint);padding:5px 9px;font-size:10px;white-space:nowrap}.badge.warn{color:var(--amber);border-color:#715d37}.data-note{margin:18px 34px 0;padding:10px 13px;border:1px solid #33584d;border-radius:8px;background:#11231f;color:#b9d5ca;font-size:11px}.message-stream{overflow:auto;padding:28px max(34px,calc((100% - 760px)/2)) 32px;display:flex;flex-direction:column;gap:20px}.message{max-width:760px;width:fit-content;padding:13px 16px;border:1px solid #294248;border-radius:12px;white-space:pre-wrap;box-shadow:0 8px 26px #0002}.message.user{align-self:flex-end;background:#19352f;border-color:#397565}.message.assistant{align-self:flex-start;background:#111d21}.message-meta{color:var(--muted);font-size:10px;margin-bottom:7px;display:flex;gap:8px;align-items:center}.message-meta .source{color:var(--mint)}.empty-chat{margin:auto;text-align:center;color:var(--muted);max-width:450px}.empty-chat strong{display:block;color:var(--text);font:500 25px Georgia,serif;margin-bottom:8px}
+    .composer-wrap{padding:0 34px 25px}.composer{border:1px solid var(--bright);background:#101d20;border-radius:12px;box-shadow:0 16px 50px #0005;overflow:hidden}.attachment-chips{min-height:0;padding:0 13px;display:flex;flex-wrap:wrap;gap:7px}.attachment-chips:not(:empty){padding-top:11px}.chip{display:flex;gap:7px;align-items:center;background:#1d3834;color:#cceade;border:1px solid #3d6c5d;border-radius:999px;padding:4px 9px;font-size:10px}.chip button{padding:0;border:0;background:transparent;color:#a7d8c2}#composer-input{width:100%;min-height:58px;max-height:180px;resize:vertical;padding:14px;color:var(--text);background:transparent;border:0;outline:0}.composer-toolbar{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;border-top:1px solid #22363a}.toolbar-left,.toolbar-right{display:flex;align-items:center;gap:7px}.toolbar-hint{color:var(--muted);font-size:10px}
+    .evidence-rail h2{font:500 20px Georgia,serif;margin:4px 0 5px}.rail-copy{color:var(--muted);font-size:11px;margin:0 0 18px}.rail-section{border-top:1px solid var(--line);padding-top:15px;margin-top:17px}.rail-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;font-size:12px}.evidence-list{display:grid;gap:7px}.evidence-row{display:flex;gap:8px;align-items:flex-start;padding:9px;border:1px solid #263a3d;border-radius:7px;background:#101a1d;font-size:11px}.evidence-row input{accent-color:var(--mint);margin-top:3px}.evidence-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.evidence-meta{color:var(--muted);font-size:9px;margin-top:2px}.rail-empty{padding:15px 10px;border:1px dashed #365052;border-radius:7px;color:var(--muted);font-size:11px}.scope-card{background:#111f20;border:1px solid #2b4945;border-radius:8px;padding:11px;font-size:11px}.scope-card strong{color:var(--mint);display:block;margin-bottom:4px}.status{min-height:20px;margin-top:7px;color:var(--mint);font-size:11px}.status.error{color:var(--danger)}
+    dialog{width:min(600px,calc(100% - 32px));max-height:85vh;overflow:auto;color:var(--text);background:#101b1e;border:1px solid #486367;border-radius:12px;padding:0;box-shadow:0 30px 100px #000}dialog::backdrop{background:#020709cc}.dialog-body{padding:23px}.dialog-body h2{font:500 23px Georgia,serif;margin:5px 0 14px}.dialog-body p{color:var(--muted);font-size:12px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:14px 23px;border-top:1px solid var(--line)}label.field{display:block;color:#c9d8d3;font-size:11px;margin-top:13px}input.field,select.field{width:100%;padding:9px;margin-top:6px;color:var(--text);background:#0b1417;border:1px solid #365055;border-radius:6px}.confirm-list{margin:12px 0;padding:0;list-style:none;display:grid;gap:7px}.confirm-list li{border:1px solid #293f43;border-radius:6px;padding:9px;font-size:11px}
+    @media(max-width:1050px){.app-shell{grid-template-columns:220px minmax(420px,1fr)}.evidence-rail{display:none}.app-shell.rail-open{grid-template-columns:220px minmax(420px,1fr) 280px}.app-shell.rail-open .evidence-rail{display:block}}@media(max-width:720px){body{overflow:auto}.app-shell{min-height:100vh;height:auto;display:block}.sidebar{display:none}.chat-stage{height:100vh}.chat-header,.composer-wrap{padding-left:16px;padding-right:16px}.data-note{margin-left:16px;margin-right:16px}.message-stream{padding-left:16px;padding-right:16px}}
   </style>
 </head>
 <body>
-  <header>
-    <h1>慢波 Manbo</h1>
-    <div><p class="muted">本地案件与材料整理工具</p><button class="secondary" id="settings">模型设置</button></div>
-  </header>
-  <section class="notice" aria-label="数据边界">
-    <strong>案件和材料保存在本设备。</strong>
-    <p>导入不会上传。使用云端 AI 时，您确认发送的内容会离开设备，由所选模型供应商处理；本版本尚未启用模型发送或 Pi 文件/终端工具。</p>
-    <p><strong>发送前确认：</strong>每次发送前会显示接收方、附件清单和任务范围。任务授权允许范围内连续调用；自治模式需显式选择，且原始文件始终不可修改。</p>
-  </section>
-  <main>
-    <div class="layout">
-      <section class="panel" aria-labelledby="cases-title">
-        <div class="eyebrow">01 · local vault</div>
-        <h2 id="cases-title">案件工作区</h2>
-        <p><button id="create">新建案件</button><button class="secondary" id="refresh">刷新案件</button></p>
-        <ul id="cases" aria-live="polite"><li class="muted">正在读取本地案件…</li></ul>
-      </section>
-      <section class="panel" id="workspace" aria-labelledby="workspace-title">
-        <div class="eyebrow">02 · draft a task</div>
-        <h2 id="workspace-title">和 AI 对话</h2>
-        <p class="muted">对话记录保存在本机。当前默认使用本地演示模型，不会发送到云端；接入真实模型前仍需完成安全验证。</p>
-        <div id="conversation" class="conversation" aria-live="polite"><div class="empty">选择案件后加载本地对话。</div></div>
-        <div id="attachment-list" class="empty">先在左侧创建或选择一个案件。</div>
-        <label for="provider">模型接收方</label>
-        <select id="provider"><option value="local-demo">本地演示模型（不联网）</option></select>
-        <label for="mode">任务模式</label>
-        <select id="mode"><option value="task">任务授权（默认）</option><option value="autonomous">自治模式（显式开启）</option></select>
-        <label for="prompt">提示词</label>
-        <textarea id="prompt" placeholder="例如：整理时间线，逐条标出材料来源和仍需核实的信息。"></textarea>
-        <div class="task-actions"><button class="secondary" id="pause-task" disabled>暂停任务</button><button class="secondary" id="revoke-task" disabled>撤销授权</button><button id="send" disabled>预览并发送</button></div>
-        <div id="status" class="status" role="status" aria-live="polite"></div>
-      </section>
-    </div>
-  </main>
-  <dialog id="confirmation">
-    <div class="dialog-body">
-      <div class="eyebrow">发送前确认</div>
-      <h2>确认本次附件和任务范围</h2>
-      <div id="confirmation-copy"></div>
-      <p class="muted">确认后会创建一次性授权。云端模型可能处理你选择的内容；本版本不会在服务器保存案件正文。</p>
-    </div>
-    <div class="dialog-actions"><button class="secondary" id="cancel-confirm">取消</button><button id="accept-confirm">确认并发送</button></div>
-  </dialog>
-  <dialog id="settings-dialog">
-    <div class="dialog-body">
-      <div class="eyebrow">模型设置</div>
-      <h2>配置模型接收方</h2>
-      <p class="muted">Key 只会交给本机系统凭据存储。页面和案件记录不会读取或显示已保存的 Key。</p>
-      <label for="provider-id">Provider ID</label><input id="provider-id" placeholder="例如 custom-openai">
-      <label for="provider-name">显示名称</label><input id="provider-name" placeholder="我的模型">
-      <label for="provider-model">模型名称</label><input id="provider-model" placeholder="模型 ID">
-      <label for="provider-endpoint">HTTPS Endpoint</label><input id="provider-endpoint" placeholder="https://example.com/v1/chat/completions">
-      <label for="provider-secret">API Key（保存后不会再次显示）</label><input id="provider-secret" type="password" autocomplete="new-password">
-      <div id="provider-status" class="status" role="status"></div>
-    </div>
-    <div class="dialog-actions"><button class="secondary" id="close-settings">关闭</button><button class="secondary" id="delete-provider">删除选中 Provider</button><button id="save-provider">保存 Provider</button></div>
-  </dialog>
+  <div class="app-shell" id="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="导航"><div class="brand"><div class="brand-mark">慢波 Manbo</div><div class="brand-sub">local evidence desk</div></div><button class="new-chat" id="new-chat">＋ 新对话</button><div class="section-label">对话 <span id="conversation-count">0</span></div><nav class="nav-list" id="conversation-list" aria-label="对话历史"></nav><div class="section-label">案件 <button class="ghost" id="create-case">＋</button></div><nav class="nav-list" id="case-list" aria-label="案件列表"></nav><div class="section-label" style="margin-top:auto"></div><button class="nav-item" id="settings">⚙ 模型与 Key 设置</button></aside>
+    <main class="chat-stage" id="workspace"><header class="chat-header"><div><div class="eyebrow">conversation / local first</div><div class="chat-title" id="chat-title">新对话</div><div class="chat-subtitle" id="chat-subtitle">普通问题不会自动读取案件材料</div></div><div class="header-actions"><span class="badge warn" id="provider-badge">未配置模型</span><span class="badge" id="scope-badge">干净上下文</span><button class="ghost" id="toggle-rail">证据栏</button></div></header><div class="data-note"><strong>本机优先：</strong>导入不会上传；只有你选择材料并发送后，内容才会交给你配置的模型供应商。原始文件只读，Pi 文件/终端工具尚未开放。</div><section class="message-stream" id="message-stream" aria-live="polite"><div class="empty-chat"><strong>从一个问题开始</strong><span>可以问普通问题，也可以在右侧选择材料后整理时间线、证据链和举报准备内容。</span></div></section><div class="composer-wrap"><div class="composer" id="composer"><div class="attachment-chips" id="attachment-chips"></div><textarea id="composer-input" placeholder="问任何问题，或描述你想整理的案件任务…" aria-label="输入消息"></textarea><div class="composer-toolbar"><div class="toolbar-left"><button class="ghost" id="clear-attachments">＋ 材料</button><span class="toolbar-hint" id="composer-hint">首次发送会确认模型接收方与上下文</span></div><div class="toolbar-right"><button class="primary" id="send" disabled>发送　↵</button></div></div></div><div class="status" id="status" role="status" aria-live="polite"></div></div></main>
+    <aside class="evidence-rail" id="evidence-rail" aria-label="证据与任务"><div class="eyebrow">case context</div><h2 id="rail-title">未选择案件</h2><p class="rail-copy" id="rail-copy">普通对话不会读取案件材料。选择案件后，勾选本次明确要发送的材料。</p><div class="rail-section"><div class="rail-heading"><strong>材料</strong><button class="ghost" id="import-evidence" disabled>＋ 导入</button></div><div class="evidence-list" id="evidence-list"><div class="rail-empty">当前对话没有案件上下文。</div></div></div><div class="rail-section"><div class="rail-heading"><strong>模型 Provider</strong></div><select class="field" id="provider" aria-label="模型 Provider"><option>未配置</option></select></div><div class="rail-section"><div class="rail-heading"><strong>发送范围</strong></div><div class="scope-card"><strong id="scope-title">干净上下文</strong><span id="scope-copy">未选择附件。普通问题不会带入案件材料或旧证据。</span></div></div><div class="rail-section"><div class="rail-heading"><strong>任务能力</strong></div><div class="rail-empty">当前只支持用户确认后的模型对话。文件、终端、网络工具需先通过三平台隔离验证。</div></div></aside>
+  </div>
+  <dialog id="confirmation"><div class="dialog-body"><div class="eyebrow">outbound preview</div><h2>确认本次发送范围</h2><p>下面是即将交给你配置的模型供应商的内容摘要。导入本身不会上传；确认后才会发送。</p><div id="confirmation-copy"></div></div><div class="dialog-actions"><button class="ghost" id="cancel-confirm">取消</button><button class="primary" id="accept-confirm">确认并发送</button></div></dialog>
+  <dialog id="settings-dialog"><div class="dialog-body"><div class="eyebrow">provider / bring your own key</div><h2>配置你的模型 API</h2><p>慢波不内置共享 Key，也不提供转发服务。Key 只保存到本机系统凭据存储，并由你选择的 HTTPS Provider 处理发送内容。</p><label class="field" for="provider-id">Provider ID</label><input class="field" id="provider-id" placeholder="custom-openai"><label class="field" for="provider-name">显示名称</label><input class="field" id="provider-name" placeholder="我的模型"><label class="field" for="provider-model">模型名称</label><input class="field" id="provider-model" placeholder="模型 ID"><label class="field" for="provider-endpoint">HTTPS Endpoint</label><input class="field" id="provider-endpoint" placeholder="https://example.com/v1/chat/completions"><label class="field" for="provider-secret">API Key（保存后不会再次显示）</label><input class="field" id="provider-secret" type="password" autocomplete="new-password"><div class="status" id="provider-status" role="status"></div></div><div class="dialog-actions"><button class="ghost" id="close-settings">关闭</button><button class="primary" id="save-provider">保存 Provider</button></div></dialog>
   <script src="./renderer.js"></script>
 </body>
 </html>
