@@ -23,6 +23,14 @@ function hash(value) {
   return createHash('sha256').update(stable(value)).digest('hex');
 }
 
+function deepFreeze(value) {
+  if (value && typeof value === 'object') {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 function normalizeIds(value) {
   if (!Array.isArray(value)) throw new Error('Evidence IDs must be an array');
   if (new Set(value).size !== value.length || value.some((id) => typeof id !== 'string' || !id.trim())) {
@@ -122,11 +130,10 @@ export async function prepareOutbound({ caseManifest, conversation, draft, readE
     attachments,
     scope,
   };
-  return Object.freeze({ ...payload, requestHash: hash(payload) });
+  return deepFreeze({ ...payload, requestHash: hash(payload) });
 }
 
-export async function previewOutbound(input) {
-  const payload = await prepareOutbound(input);
+function previewFromPayload(payload) {
   return Object.freeze({
     provider: payload.providerId,
     model: payload.model,
@@ -138,12 +145,15 @@ export async function previewOutbound(input) {
   });
 }
 
+export async function previewOutbound(input) {
+  return previewFromPayload(await prepareOutbound(input));
+}
+
 export async function confirmOutbound(input, { accepted, preview } = {}) {
   if (accepted !== true) throw new Error('Explicit confirmation required before send');
   if (!preview || typeof preview.requestHash !== 'string') throw new Error('Send confirmation is required');
   const payload = await prepareOutbound(input);
-  const expected = await previewOutbound(input);
+  const expected = previewFromPayload(payload);
   if (stable(expected) !== stable(preview)) throw new Error('Send confirmation changed');
   return Object.freeze({ requestId: randomUUID(), authorization: Object.freeze({ mode: input.draft.mode, provider: payload.providerId, evidenceIds: payload.scope.evidenceIds }), payload });
 }
-

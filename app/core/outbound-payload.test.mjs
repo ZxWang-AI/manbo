@@ -107,3 +107,48 @@ test('autonomous mode remains unavailable until isolated Pi tools are verified',
   );
 });
 
+function confirmationInput() {
+  const file = { id: 'note', name: 'synthetic.txt', bytes: 10, sha256: 'e'.repeat(64), mimeType: 'text/plain', content: 'approved text' };
+  return {
+    caseManifest: { evidence: [file] },
+    draft: { mode: 'task', provider: 'custom', model: 'm1', prompt: '整理', selectedEvidenceIds: ['note'] },
+    readEvidence: async () => ({ ...file }),
+  };
+}
+
+test('confirmation cannot compare a second read to authorize different first-read content', async () => {
+  const input = confirmationInput();
+  const preview = await previewOutbound(input);
+  let reads = 0;
+  await assert.rejects(confirmOutbound({
+    ...input,
+    readEvidence: async () => ({ ...(await input.readEvidence()), content: ++reads === 1 ? 'changed text' : 'approved text' }),
+  }, { accepted: true, preview }), /changed/i);
+  assert.equal(reads, 1);
+});
+
+test('successful confirmation reads evidence only once', async () => {
+  const input = confirmationInput();
+  const preview = await previewOutbound(input);
+  let reads = 0;
+  const result = await confirmOutbound({ ...input, readEvidence: async () => { reads++; return input.readEvidence(); } }, { accepted: true, preview });
+  assert.equal(reads, 1);
+  assert.equal(result.payload.requestHash, preview.requestHash);
+});
+
+test('approved payload freezes nested message parts and PDF page ranges', async () => {
+  const files = [
+    { id: 'pdf', name: 'synthetic.pdf', bytes: 10, sha256: 'f'.repeat(64), mimeType: 'application/pdf', pages: [{ page: 1, text: 'synthetic page' }] },
+    { id: 'img', name: 'synthetic.png', bytes: 10, sha256: 'e'.repeat(64), mimeType: 'image/png', dataUrl: 'data:image/png;base64,AA==' },
+  ];
+  const payload = await prepareOutbound({
+    caseManifest: { evidence: files },
+    draft: { mode: 'task', provider: 'custom', model: 'm1', prompt: '整理', selectedEvidenceIds: ['pdf', 'img'] },
+    capabilities: { images: true },
+    readEvidence: async (id) => files.find((file) => file.id === id),
+  });
+  assert.throws(() => { payload.messages[0].content[0].text = 'replaced'; }, TypeError);
+  assert.throws(() => { payload.messages[0].content[2].image_url.url = 'replaced'; }, TypeError);
+  assert.throws(() => { payload.attachments[0].pages.push(2); }, TypeError);
+  assert.throws(() => { payload.messages.push({ role: 'user', content: [] }); }, TypeError);
+});
