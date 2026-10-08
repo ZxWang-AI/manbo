@@ -5,6 +5,7 @@ function normalizeDraft(caseManifest, draft) {
   if (!draft || typeof draft !== 'object') throw new Error('Invalid send draft');
   const { mode, provider, prompt } = draft;
   if (mode !== 'task' && mode !== 'autonomous') throw new Error('Invalid authorization mode');
+  if (mode === 'autonomous') throw new Error('Autonomous mode is unavailable until Pi tools are verified');
   if (typeof provider !== 'string' || !provider.trim() || /[\x00-\x1f\x7f]/.test(provider)) {
     throw new Error('Invalid provider identifier');
   }
@@ -14,9 +15,7 @@ function normalizeDraft(caseManifest, draft) {
   const evidenceIds = mode === 'autonomous'
     ? caseManifest.evidence.map((item) => item.id)
     : draft.selectedEvidenceIds;
-  if (!Array.isArray(evidenceIds) || (mode === 'task' && evidenceIds.length === 0)) {
-    throw new Error('Task mode requires selected evidence');
-  }
+  if (!Array.isArray(evidenceIds)) throw new Error('Evidence IDs must be an array');
   if (new Set(evidenceIds).size !== evidenceIds.length || evidenceIds.some((id) => !known.has(id))) {
     throw new Error('Duplicate or unknown evidence ID');
   }

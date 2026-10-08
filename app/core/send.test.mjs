@@ -46,7 +46,7 @@ test('confirmation is required before a send authorization is created', () => {
   assert.match(result.requestId, /^[0-9a-f-]{36}$/i);
 });
 
-test('confirmation rejects a changed draft and invalid task scope', () => {
+test('confirmation rejects a changed draft while allowing a clean task scope', () => {
   const draft = {
     mode: 'task',
     provider: 'default-service',
@@ -57,18 +57,15 @@ test('confirmation rejects a changed draft and invalid task scope', () => {
 
   assert.throws(() => confirmSend(caseManifest, { ...draft, prompt: '修改后的提示词' }, { accepted: true, preview }), /changed/i);
   assert.throws(() => previewSend(caseManifest, { ...draft, selectedEvidenceIds: ['missing'] }), /unknown/i);
-  assert.throws(() => previewSend(caseManifest, { ...draft, selectedEvidenceIds: [] }), /evidence/i);
+  assert.deepEqual(previewSend(caseManifest, { ...draft, selectedEvidenceIds: [] }).evidence, []);
   assert.throws(() => previewSend(caseManifest, { ...draft, prompt: '   ' }), /prompt/i);
 });
 
-test('autonomous preview snapshots all current evidence and still requires explicit confirmation', () => {
+test('autonomous mode remains unavailable until Pi tools are verified', () => {
   const draft = {
     mode: 'autonomous',
     provider: 'custom-provider',
     prompt: '自行整理案件工作区并列出下一步',
   };
-  const preview = previewSend(caseManifest, draft);
-  caseManifest.evidence.push({ id: 'later', name: 'later.txt', sha256: 'c'.repeat(64), bytes: 1 });
-  assert.deepEqual(preview.evidence.map((item) => item.id), ['one', 'two']);
-  assert.throws(() => confirmSend(caseManifest, draft, { accepted: false }), /confirm/i);
+  assert.throws(() => previewSend(caseManifest, draft), /autonomous|Pi|tools/i);
 });

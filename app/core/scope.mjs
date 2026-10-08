@@ -2,14 +2,13 @@ import { randomUUID } from 'node:crypto';
 
 export function createAuthorization(caseManifest, { mode, selectedEvidenceIds, provider }) {
   if (mode !== 'task' && mode !== 'autonomous') throw new Error('Invalid authorization mode');
+  if (mode === 'autonomous') throw new Error('Autonomous mode is unavailable until Pi tools are verified');
   if (typeof provider !== 'string' || !provider.trim() || /[\x00-\x1f\x7f]/.test(provider)) {
     throw new Error('Invalid provider identifier');
   }
   const known = new Set(caseManifest.evidence.map((item) => item.id));
   const ids = mode === 'task' ? selectedEvidenceIds : caseManifest.evidence.map((item) => item.id);
-  if (!Array.isArray(ids) || (mode === 'task' && ids.length === 0)) {
-    throw new Error('Task mode requires selected evidence');
-  }
+  if (!Array.isArray(ids)) throw new Error('Evidence IDs must be an array');
   if (new Set(ids).size !== ids.length || ids.some((id) => !known.has(id))) {
     throw new Error('Duplicate or unknown evidence ID');
   }

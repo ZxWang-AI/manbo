@@ -22,16 +22,13 @@ test('task mode grants only selected known evidence IDs', () => {
   assert.ok(Object.isFrozen(auth.evidenceIds));
 });
 
-test('autonomous mode snapshots existing evidence, not later imports', () => {
-  const manifest = structuredClone(caseManifest);
-  const auth = createAuthorization(manifest, { mode: 'autonomous', provider: 'test-provider' });
-  manifest.evidence.push({ id: 'later' });
-  assert.deepEqual(auth.evidenceIds, ['one', 'two']);
-  assert.equal(canReadEvidence(auth, 'later'), false);
+test('autonomous mode remains unavailable until Pi tools are verified', () => {
+  assert.throws(() => createAuthorization(caseManifest, { mode: 'autonomous', provider: 'test-provider' }), /autonomous|Pi|tools/i);
 });
 
-test('task mode rejects empty, duplicate and unknown selections', () => {
-  for (const selectedEvidenceIds of [[], ['one', 'one'], ['missing']]) {
+test('task mode accepts clean scope but rejects duplicate and unknown selections', () => {
+  assert.deepEqual(createAuthorization(caseManifest, { mode: 'task', selectedEvidenceIds: [], provider: 'test-provider' }).evidenceIds, []);
+  for (const selectedEvidenceIds of [['one', 'one'], ['missing']]) {
     assert.throws(() => createAuthorization(caseManifest, { mode: 'task', selectedEvidenceIds, provider: 'test-provider' }));
   }
 });
@@ -39,6 +36,6 @@ test('task mode rejects empty, duplicate and unknown selections', () => {
 test('rejects unknown modes and invalid provider identifiers', () => {
   assert.throws(() => createAuthorization(caseManifest, { mode: 'other', provider: 'test-provider' }), /mode/i);
   for (const provider of ['', 'bad\nprovider', undefined]) {
-    assert.throws(() => createAuthorization(caseManifest, { mode: 'autonomous', provider }), /provider/i);
+    assert.throws(() => createAuthorization(caseManifest, { mode: 'task', selectedEvidenceIds: [], provider }), /provider/i);
   }
 });
