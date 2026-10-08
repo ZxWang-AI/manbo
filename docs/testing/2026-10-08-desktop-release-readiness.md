@@ -172,3 +172,13 @@ Electron 44.4.5 发布 manifest 没有 postinstall；原生安装脚本须显式
 单文件/清单限额 2 MiB，最多 1024 个材料；空文件、超限及硬链接源拒绝。旧超限清单现在拒绝读取，不自动删除或迁移。PDF/未知格式明确拒绝发送；图像只检查 PNG/JPEG/GIF/WebP 格式签名，未做完整解码或像素限额验证。本次应用检查不是针对同用户恶意并发进程的操作系统沙箱。依赖未改，本次未重跑 audit/干净安装。
 
 原阻断项 3 的上述读取边界已修复。IPC sender、凭据后端、请求生命周期、敏感历史/并发迁移、网络控制和四目标安装验收尚未通过；未创建安装包、tag、Actions 或公开 Release，发布总门禁仍未通过。
+
+## 追加：IPC 与凭据应用边界（2026-10-08）
+
+执行 `2026-10-08-ipc-credentials-safety.md`。旧主进程在 foreign sender、subframe/remote document、导航策略和 Linux basic_text 四项测试失败（前三项为缺少拒绝/导航 preventDefault，Linux 为错误允许保存）。旧 Provider 并发保存发生 Date.now 临时文件 EEXIST；畸形元数据、URL userinfo/query/fragment 都未拒绝。新 secret-store 初次为缺少模块错误，不作为原凭据六项行为复现证据。
+
+现在所有 IPC 统一校验 live window/webContents、同一 mainFrame 和精确本地文档；导航/重定向、弹窗、webview、下载、权限请求/检查拒绝。操作错误以固定消息返回，不转发可能回显 Key/提示词的原始错误。窗口关闭中止请求，macOS activate 可重建窗口。实际 main 源在 Node VM 中执行，Electron 原生界面边界使用 interface double；不是 Chromium/安装验收。
+
+Key 存储显式拒绝 unavailable/basic_text/未知 Linux 后端；只接受 gnome_libsecret/kwallet/kwallet5/kwallet6。ciphertext 编码/条数/限额校验；strict UTF-8、single-link regular file、canonical directory、随机 UUID 临时文件和 0600 权限；进程内按规范 root+文件队列串行，多个 store 实例/重启不会丢失不同 Key。Provider 元数据同样 bounded/normalized/串行，拒绝 URL 用户名密码/查询/fragment 和超长或控制字符 Key，公开返回 hasKey 而非秘密。共享 local-json 模块仅实现受限 JSON I/O 和串行化。metadata 与 ciphertext 跨文件更新不是 crash-atomic transaction，失败可能留下孤立加密记录；不声称 Key 和案件统一加密。
+
+固定 Node v24.21.0 Windows x64 全套 **93/93，0 fail、0 skip**；VM 默认动态导入器有 Node ExperimentalWarning，保留可见，不隐藏诊断。凭据 encrypt/decrypt 使用合成 native double，只证明应用边界，不证明 Windows/macOS/Linux 的 OS 后端可用。依赖没有变，本轮未运行 audit 或原生 Electron。剩余：历史/迁移/并发会话、用户取消与重复确认、图片解码、DNS/IPv6/重定向/HTTP/SSE/总限额、四目标安装验收；发布总门禁仍未通过。

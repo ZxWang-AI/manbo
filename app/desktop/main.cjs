@@ -1,8 +1,31 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron');
-const { mkdir, readFile, rename, unlink, writeFile } = require('node:fs/promises');
 const { join } = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 const activeChatRequests = new Map();
+const documentUrl = pathToFileURL(join(__dirname, 'index.html')).href;
+let mainWindow = null;
+
+function assertTrusted(event) {
+  const contents = mainWindow?.webContents;
+  if (!mainWindow || mainWindow.isDestroyed() || !contents || contents.isDestroyed()
+    || !event || event.sender !== contents || !event.senderFrame
+    || event.senderFrame !== contents.mainFrame || event.senderFrame.isDestroyed()
+    || event.senderFrame.url !== documentUrl) {
+    throw new Error('Untrusted IPC sender');
+  }
+}
+
+function handle(channel, operation) {
+  ipcMain.handle(channel, async (event, ...args) => {
+    assertTrusted(event);
+    try { return await operation(event, ...args); }
+    catch {
+      // Provider errors can echo Keys, prompts or response bodies. Never forward them.
+      throw new Error('操作未完成，请检查输入或本地配置；详细供应商错误不会展示。');
+    }
+  });
+}
 
 function vaultRoot() {
   return join(app.getPath('userData'), 'cases');
@@ -12,47 +35,13 @@ function settingsRoot() {
   return join(app.getPath('userData'), 'settings');
 }
 
-function createSafeSecretStore() {
-  const filePath = join(settingsRoot(), 'provider-secrets.json');
-  async function readSecrets() {
-    try { return JSON.parse(await readFile(filePath, 'utf8')); } catch (error) {
-      if (error.code === 'ENOENT') return {};
-      throw new Error('Provider credentials are unreadable');
-    }
-  }
-  async function writeSecrets(secrets) {
-    const temporary = join(settingsRoot(), `provider-secrets.${Date.now()}.tmp`);
-    await mkdir(settingsRoot(), { recursive: true });
-    try {
-      await writeFile(temporary, JSON.stringify(secrets), { flag: 'wx', mode: 0o600 });
-      await rename(temporary, filePath);
-    } catch (error) {
-      await unlink(temporary).catch(() => {});
-      throw error;
-    }
-  }
-  return {
-    async get(id) {
-      const encoded = (await readSecrets())[id];
-      if (!encoded || !safeStorage.isEncryptionAvailable()) return null;
-      return safeStorage.decryptString(Buffer.from(encoded, 'base64'));
-    },
-    async set(id, value) {
-      if (!safeStorage.isEncryptionAvailable()) throw new Error('系统凭据存储不可用，无法保存 Provider Key');
-      const secrets = await readSecrets();
-      secrets[id] = safeStorage.encryptString(value).toString('base64');
-      await writeSecrets(secrets);
-    },
-    async delete(id) {
-      const secrets = await readSecrets();
-      delete secrets[id];
-      await writeSecrets(secrets);
-    },
-  };
-}
-
-function providerSettings() {
-  return { root: settingsRoot(), secretStore: createSafeSecretStore() };
+let settingsPromise;
+async function providerSettings() {
+  settingsPromise ??= import('../core/secret-store.mjs').then(({ createSafeSecretStore }) => ({
+    root: settingsRoot(),
+    secretStore: createSafeSecretStore({ root: settingsRoot(), safeStorage, platform: process.platform }),
+  }));
+  return settingsPromise;
 }
 
 async function createWindow() {
@@ -67,55 +56,67 @@ async function createWindow() {
       preload: join(__dirname, 'preload.cjs'),
     },
   });
+  mainWindow = window;
+  for (const name of ['will-navigate', 'will-frame-navigate', 'will-redirect', 'will-attach-webview']) {
+    window.webContents.on(name, (event) => event.preventDefault());
+  }
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  window.webContents.session.setPermissionCheckHandler(() => false);
+  window.webContents.session.on('will-download', (event) => event.preventDefault());
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = null;
+    for (const controller of activeChatRequests.values()) controller.abort();
+  });
   await window.loadFile(join(__dirname, 'index.html'));
 }
 
-ipcMain.handle('case:create', async () => {
+handle('case:create', async () => {
   const { createCase } = await import('../core/cases.mjs');
   return createCase(vaultRoot());
 });
-ipcMain.handle('case:list', async () => {
+handle('case:list', async () => {
   const { listCases } = await import('../core/cases.mjs');
   return listCases(vaultRoot());
 });
-ipcMain.handle('evidence:import', async (event, caseId) => {
+handle('evidence:import', async (event, caseId) => {
   if (typeof caseId !== 'string') throw new Error('Invalid case ID');
   const result = await dialog.showOpenDialog({ properties: ['openFile'] });
   if (result.canceled || result.filePaths.length !== 1) return null;
   const { importEvidence } = await import('../core/cases.mjs');
   return importEvidence(vaultRoot(), caseId, result.filePaths[0]);
 });
-ipcMain.handle('send:preview', async (event, caseId, draft) => {
+handle('send:preview', async (event, caseId, draft) => {
   if (typeof caseId !== 'string') throw new Error('Invalid case ID');
   const { readCase } = await import('../core/cases.mjs');
   const { previewSend } = await import('../core/send.mjs');
   return previewSend(await readCase(vaultRoot(), caseId), draft);
 });
-ipcMain.handle('send:confirm', async (event, caseId, draft, confirmation) => {
+handle('send:confirm', async (event, caseId, draft, confirmation) => {
   if (typeof caseId !== 'string') throw new Error('Invalid case ID');
   const { readCase } = await import('../core/cases.mjs');
   const { confirmSend } = await import('../core/send.mjs');
   return confirmSend(await readCase(vaultRoot(), caseId), draft, confirmation);
 });
-ipcMain.handle('provider:list', async () => {
+handle('provider:list', async () => {
   const { listProviders } = await import('../core/providers.mjs');
-  return listProviders(providerSettings());
+  return listProviders(await providerSettings());
 });
-ipcMain.handle('provider:save', async (event, config, secret) => {
+handle('provider:save', async (event, config, secret) => {
   const { saveProvider } = await import('../core/providers.mjs');
-  return saveProvider(providerSettings(), config, secret);
+  return saveProvider(await providerSettings(), config, secret);
 });
-ipcMain.handle('provider:delete', async (event, providerId) => {
+handle('provider:delete', async (event, providerId) => {
   const { deleteProvider } = await import('../core/providers.mjs');
-  await deleteProvider(providerSettings(), providerId);
+  await deleteProvider(await providerSettings(), providerId);
   return { deleted: true };
 });
-ipcMain.handle('chat:load', async (event, caseId) => {
+handle('chat:load', async (event, caseId) => {
   if (typeof caseId !== 'string') throw new Error('Invalid case ID');
   const { readConversation } = await import('../core/conversations.mjs');
   return readConversation(vaultRoot(), caseId);
 });
-ipcMain.handle('chat:send', async (event, caseId, draft, confirmation) => {
+handle('chat:send', async (event, caseId, draft, confirmation) => {
   if (typeof caseId !== 'string') throw new Error('Invalid case ID');
   const { readCase } = await import('../core/cases.mjs');
   const { confirmSend } = await import('../core/send.mjs');
@@ -152,32 +153,33 @@ async function readEvidenceForOutbound(caseId, evidenceId) {
 
 async function configuredProviderStore() {
   const { readProvider } = await import('../core/providers.mjs');
-  return { readProvider: (id) => readProvider(providerSettings(), id) };
+  const settings = await providerSettings();
+  return { readProvider: (id) => readProvider(settings, id) };
 }
 
-ipcMain.handle('conversation:list', async () => (await chatStore()).list());
-ipcMain.handle('conversation:create', async (event, options = {}) => {
+handle('conversation:list', async () => (await chatStore()).list());
+handle('conversation:create', async (event, options = {}) => {
   if (!options || typeof options !== 'object') throw new Error('Invalid conversation options');
   return (await chatStore()).create({ caseId: options.caseId ?? null, title: options.title });
 });
-ipcMain.handle('conversation:load', async (event, conversationId) => (await chatStore()).read(conversationId));
-ipcMain.handle('chat:preview-v2', async (event, input = {}) => {
+handle('conversation:load', async (event, conversationId) => (await chatStore()).read(conversationId));
+handle('chat:preview-v2', async (event, input = {}) => {
   if (!input || typeof input !== 'object' || typeof input.conversationId !== 'string') throw new Error('Invalid chat preview');
   const store = await chatStore();
   const conversation = await store.read(input.conversationId);
   const caseManifest = conversation.caseId ? await (await import('../core/cases.mjs')).readCase(vaultRoot(), conversation.caseId) : { evidence: [] };
   const { readProvider } = await import('../core/providers.mjs');
-  const provider = await readProvider(providerSettings(), input.draft?.provider);
+  const provider = await readProvider(await providerSettings(), input.draft?.provider);
   const { previewOutbound } = await import('../core/outbound-payload.mjs');
   return previewOutbound({ caseManifest, conversation, draft: { ...input.draft, model: input.draft?.model ?? provider.config.model }, readEvidence: (id) => readEvidenceForOutbound(conversation.caseId, id), capabilities: provider.config.capabilities });
 });
-ipcMain.handle('chat:send-v2', async (event, input = {}) => {
+handle('chat:send-v2', async (event, input = {}) => {
   if (!input || typeof input !== 'object' || typeof input.conversationId !== 'string') throw new Error('Invalid chat request');
   const store = await chatStore();
   const conversation = await store.read(input.conversationId);
   const caseManifest = conversation.caseId ? await (await import('../core/cases.mjs')).readCase(vaultRoot(), conversation.caseId) : { evidence: [] };
   const { readProvider } = await import('../core/providers.mjs');
-  const provider = await readProvider(providerSettings(), input.draft?.provider);
+  const provider = await readProvider(await providerSettings(), input.draft?.provider);
   const { confirmOutbound } = await import('../core/outbound-payload.mjs');
   const draft = { ...input.draft, model: input.draft?.model ?? provider.config.model };
   const confirmed = await confirmOutbound({ caseManifest, conversation, draft, readEvidence: (id) => readEvidenceForOutbound(conversation.caseId, id), capabilities: provider.config.capabilities }, input.confirmation);
@@ -198,7 +200,7 @@ ipcMain.handle('chat:send-v2', async (event, input = {}) => {
     activeChatRequests.delete(confirmed.requestId);
   }
 });
-ipcMain.handle('chat:abort', async (event, requestId) => {
+handle('chat:abort', async (event, requestId) => {
   if (typeof requestId !== 'string') throw new Error('Invalid request ID');
   const controller = activeChatRequests.get(requestId);
   if (controller) controller.abort();
@@ -206,6 +208,9 @@ ipcMain.handle('chat:abort', async (event, requestId) => {
 });
 
 app.whenReady().then(createWindow);
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) void createWindow();
+});
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });

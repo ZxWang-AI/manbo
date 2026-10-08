@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createMemorySecretStore, deleteProvider, listProviders, saveProvider } from './providers.mjs';
 
 test('lists a local demo provider without exposing a secret', async () => {
@@ -16,6 +19,34 @@ test('lists a local demo provider without exposing a secret', async () => {
   }]);
   assert.equal(providers[0].secret, undefined);
   assert.equal(providers[0].apiKey, undefined);
+});
+
+const config = (id) => ({ id, name: id, kind: 'openai-compatible', model: 'synthetic', endpoint: 'https://example.test/v1' });
+async function diskFixture(t) {
+  const root = await mkdtemp(join(tmpdir(), 'manbo-provider-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  return { root, secretStore: createMemorySecretStore() };
+}
+
+test('concurrent distinct provider saves preserve both configurations', async (t) => {
+  const settings = await diskFixture(t);
+  await Promise.all(['first', 'second'].map((id) => saveProvider(settings, config(id), 'SYNTHETIC')));
+  assert.deepEqual((await listProviders(settings)).map((item) => item.id).sort(), ['first', 'local-demo', 'second']);
+});
+
+test('malformed provider metadata is rejected instead of silently becoming empty', async (t) => {
+  const settings = await diskFixture(t);
+  await writeFile(join(settings.root, 'providers.json'), '{}');
+  await assert.rejects(listProviders(settings), /unreadable|invalid/i);
+});
+
+test('provider endpoint cannot persist credentials or query secrets and Key length is bounded', async (t) => {
+  const settings = await diskFixture(t);
+  for (const endpoint of ['https://user:secret@example.test/v1', 'https://example.test/v1?key=secret', 'https://example.test/v1#secret']) {
+    await assert.rejects(saveProvider(settings, { ...config('synthetic'), endpoint }, 'SYNTHETIC'), /endpoint/i);
+  }
+  await assert.rejects(saveProvider(settings, config('synthetic'), 'x'.repeat(8193)), /key/i);
+  await assert.rejects(readFile(join(settings.root, 'providers.json')), { code: 'ENOENT' });
 });
 
 test('saves custom provider metadata separately from its secret', async () => {

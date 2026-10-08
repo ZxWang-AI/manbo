@@ -1,5 +1,4 @@
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readLocalJson, serializeLocalMutation, writeLocalJson } from './local-json.mjs';
 
 const DEMO_PROVIDER = Object.freeze({
   id: 'local-demo',
@@ -20,7 +19,7 @@ function cleanText(value, field, max = 120) {
 function normalizeConfig(input) {
   if (!input || typeof input !== 'object') throw new Error('Invalid provider config');
   const id = cleanText(input.id, 'id', 64).toLowerCase();
-  if (!/^[a-z][a-z0-9._-]*$/.test(id)) throw new Error('Invalid provider id');
+  if (!/^[a-z][a-z0-9._-]*$/.test(id) || ['constructor', 'prototype'].includes(id)) throw new Error('Invalid provider id');
   const kind = cleanText(input.kind, 'kind', 32);
   if (kind !== 'demo' && kind !== 'openai-compatible') throw new Error('Invalid provider kind');
   const model = cleanText(input.model, 'model', 160);
@@ -35,10 +34,10 @@ function normalizeConfig(input) {
     api: 'openai-completions',
   });
   if (kind === 'openai-compatible') {
-    if (typeof input.endpoint !== 'string') throw new Error('Invalid provider endpoint');
+    if (typeof input.endpoint !== 'string' || input.endpoint.length > 2048) throw new Error('Invalid provider endpoint');
     let url;
     try { url = new URL(input.endpoint); } catch { throw new Error('Invalid provider endpoint'); }
-    if (url.protocol !== 'https:') throw new Error('Provider endpoint must use HTTPS');
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Invalid provider endpoint: HTTPS without credentials/query/fragment is required');
     endpoint = url.toString().replace(/\/$/, '');
   }
   return Object.freeze({ id, name, kind, model, endpoint, capabilities: kind === 'demo' ? DEMO_PROVIDER.capabilities : capabilities });
@@ -51,9 +50,11 @@ function publicConfig(config, hasKey) {
 async function readConfigs(root) {
   if (!root) return [];
   try {
-    const parsed = JSON.parse(await readFile(join(root, 'providers.json'), 'utf8'));
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(normalizeConfig).filter((config) => config.id !== DEMO_PROVIDER.id);
+    const parsed = await readLocalJson(root, 'providers.json', []);
+    if (!Array.isArray(parsed) || parsed.length > 64) throw new Error('Invalid provider settings');
+    const configs = parsed.map(normalizeConfig);
+    if (new Set(configs.map((config) => config.id)).size !== configs.length) throw new Error('Duplicate provider ID');
+    return configs.filter((config) => config.id !== DEMO_PROVIDER.id);
   } catch (error) {
     if (error.code === 'ENOENT') return [];
     throw new Error('Provider settings are unreadable');
@@ -62,15 +63,7 @@ async function readConfigs(root) {
 
 async function writeConfigs(root, configs) {
   if (!root) return;
-  await mkdir(root, { recursive: true });
-  const temporary = join(root, `providers.${Date.now()}.tmp`);
-  try {
-    await writeFile(temporary, JSON.stringify(configs, null, 2), { flag: 'wx', mode: 0o600 });
-    await rename(temporary, join(root, 'providers.json'));
-  } catch (error) {
-    await unlink(temporary).catch(() => {});
-    throw error;
-  }
+  await writeLocalJson(root, 'providers.json', configs);
 }
 
 export function createMemorySecretStore() {
@@ -91,24 +84,34 @@ export async function listProviders({ root, secretStore, configs } = {}) {
   return Promise.all(all.map(async (config) => publicConfig(config, Boolean(await secretStore.get(config.id)))));
 }
 
-export async function saveProvider({ root, secretStore }, input, secret) {
+async function saveOne({ root, secretStore }, input, secret) {
   if (!secretStore || typeof secretStore.set !== 'function') throw new Error('Secret store is required');
   const config = normalizeConfig(input);
-  if (config.kind !== 'demo' && (typeof secret !== 'string' || !secret.trim())) throw new Error('Provider key is required');
-  if (config.kind === 'demo') await secretStore.delete(config.id);
-  else await secretStore.set(config.id, secret);
+  if (config.id === DEMO_PROVIDER.id) throw new Error('The local demo provider cannot be overwritten');
+  if (config.kind !== 'demo' && (typeof secret !== 'string' || !secret.trim() || secret.length > 8192 || /[^\x20-\x7e]/.test(secret))) throw new Error('Invalid provider key');
   const existing = await readConfigs(root);
   const next = [...existing.filter((item) => item.id !== config.id && item.id !== DEMO_PROVIDER.id), config];
+  if (next.length > 64) throw new Error('Provider count limit exceeded');
+  if (config.kind === 'demo') await secretStore.delete(config.id);
+  else await secretStore.set(config.id, secret);
   await writeConfigs(root, next);
   return publicConfig(config, config.kind === 'demo' ? false : true);
 }
 
-export async function deleteProvider({ root, secretStore }, id) {
+export function saveProvider(settings, input, secret) {
+  return settings.root ? serializeLocalMutation(settings.root, 'providers.json', () => saveOne(settings, input, secret)) : saveOne(settings, input, secret);
+}
+
+async function deleteOne({ root, secretStore }, id) {
   const providerId = cleanText(id, 'id', 64).toLowerCase();
   if (providerId === DEMO_PROVIDER.id) throw new Error('The local demo provider cannot be deleted');
   await secretStore.delete(providerId);
   const existing = await readConfigs(root);
   await writeConfigs(root, existing.filter((item) => item.id !== providerId));
+}
+
+export function deleteProvider(settings, id) {
+  return settings.root ? serializeLocalMutation(settings.root, 'providers.json', () => deleteOne(settings, id)) : deleteOne(settings, id);
 }
 
 export async function readProvider({ root, secretStore }, id) {
