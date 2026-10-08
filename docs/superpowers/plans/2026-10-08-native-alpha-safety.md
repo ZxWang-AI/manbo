@@ -39,7 +39,7 @@ Native review found the existing first-use requirement absent (only a banner). A
 - [x] Main inspector verifies real safeStorage encrypt/decrypt, ciphertext contains no synthetic plaintext, and restart decrypt from the same isolated profile. Native tests cannot substitute for macOS/Linux backends.
 - [x] Verify remote navigation/window opening and foreign renderer IPC refusal using real Chromium windows created solely in this profile. Subframes have no app/Node bridge; add CSP `frame-src 'none'` after native data-document navigation bypassed event-only protection, then verify actual CSP violation and blocked document. Subframe sender rejection itself is VM evidence, not an actual native subframe IPC invocation. Hash synthetic original files before/after.
 - [x] Test-only module resolution redirects only main.cjs's gateway import to fixtures/native-model-gateway.mjs. That module delegates unchanged real gateway/Pi/transport with trusted test CA and TCP remap; no global fetch/DNS override or production hook. Verify native UI complete request and slow-stream cancellation, single request, exact approved prompt/material/history, no tools, atomic local records and unchanged original hashes. Keep this test boundary explicit; it is not real cloud-provider acceptance.
-- [ ] Record versions and exact proved behaviors; run full Node regression and diff check; ordinary commit/push with remote SHA receipt. Leave native installer/platform checks unchecked.
+- [x] Record versions and exact proved behaviors; run full Node regression and diff check; ordinary commit/push with remote SHA receipt. Leave native installer/platform checks unchecked. Source commit `a4c97b187d0cc1f5b62a032912f943f7f21a9fbe` was ordinarily pushed and remote main matched; receipt documentation follows in a separate commit.
 
 ### Native review fixes and final verification
 
@@ -51,3 +51,9 @@ Native review found the existing first-use requirement absent (only a banner). A
 ## Self-review
 
 The test-only global inspector reference is not an application API and must be excluded with all fixtures/native probe files from packages. Never disable Gatekeeper/SmartScreen or claim that source/native development tests are installer acceptance. Packaging follows only after application gates close; four target credentials/installer acceptance still required before public prerelease.
+
+## Handoff boundary
+
+This application-safety plan is complete within its explicit Windows/synthetic scope. Do not mark the four-target release complete. Read-only GitHub checks found Actions enabled, no configured repository secrets, no self-hosted runners, and no releases; hosted runners may build but are not proof of installed credentials/platform acceptance. Target environments and signing/notarization arrangements require user/external coordination. No workflow, public artifact, tag or Release was created.
+
+Only a registry metadata lookup of candidate electron-builder 26.15.3 was performed (MIT, Node >=14); this is not a dependency/lifecycle audit or adoption. Neither manifest, lockfile nor installed dependencies changed. Builder adoption, actual ASAR review and clean packaged runtime validation remain separate implementation work after the missing platform handoff is resolved.

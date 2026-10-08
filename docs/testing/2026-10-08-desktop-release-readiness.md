@@ -258,3 +258,5 @@ GitHub 只读检查仍为：Release 列表为空、可见 Secret 列表为空、
 Windows 应用层子门禁已取得上述行为证据，**Desktop 发布总门禁仍未通过**。尚未引入 electron-builder、Actions workflow 或任何自动更新器；没有生成/上传公共 artifacts、tag 或 Release。ASAR 实际运行资源白名单、完整产物秘密/内容检查、许可证及四目标安装验收仍是包装阶段的必做项，不能仅凭配置声明通过。未签名候选可以在本机准备，但若系统防护阻止启动，不得绕过或记为正常安装通过；四目标须一起验收，不悄悄改为 Windows 单平台公开完成。
 
 Pi 文件/终端/MCP/codemode/自治/自动举报仍关闭；没有增加材料托管。知识库检索、结构化证据链、用户导出、举报操作引导仍未交付。首次说明准确区分本地记录、系统 Key 加密和用户云供应商处理，不使用“全部本机执行”或“无额外信息保护责任”作为免责承诺。
+
+原生应用安全源码收据：`a4c97b187d0cc1f5b62a032912f943f7f21a9fbe`（`fix: close native preview and document boundaries for Alpha`）已普通推送；`git ls-remote` 核对远程 main 完全匹配。收据和计划结案记录属于后续文档提交，不能倒称已包含在该源码提交中。只读查询 electron-builder 26.15.3 的 registry 元数据（MIT、Node >=14），尚未审阅/采用其实际依赖或执行脚本；应用 manifest、lockfile、依赖保持原状。
