@@ -1,7 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron');
 const { mkdir, readFile, rename, unlink, writeFile } = require('node:fs/promises');
 const { join } = require('node:path');
-const { extname } = require('node:path');
 
 const activeChatRequests = new Map();
 
@@ -147,19 +146,8 @@ function chatStore() {
 
 async function readEvidenceForOutbound(caseId, evidenceId) {
   if (typeof caseId !== 'string') throw new Error('Evidence requires a case');
-  const { readCase } = await import('../core/cases.mjs');
-  const manifest = await readCase(vaultRoot(), caseId);
-  const item = manifest.evidence.find((entry) => entry.id === evidenceId);
-  if (!item) throw new Error('Unknown evidence ID');
-  const bytes = await readFile(join(vaultRoot(), caseId, 'originals', item.storedName));
-  const extension = extname(item.name).toLowerCase();
-  const mimeType = extension === '.pdf' ? 'application/pdf'
-    : ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(extension) ? `image/${extension.slice(1) === 'jpg' ? 'jpeg' : extension.slice(1)}`
-      : ['.txt', '.md', '.csv', '.json', '.log', '.xml', '.html', '.yaml', '.yml'].includes(extension) ? 'text/plain'
-        : 'application/octet-stream';
-  if (mimeType.startsWith('image/')) return { ...item, mimeType, dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}` };
-  if (mimeType === 'application/pdf') return { ...item, mimeType, pages: [] };
-  return { ...item, mimeType, content: bytes.toString('utf8') };
+  const reader = await import('../core/evidence-reader.mjs');
+  return reader.readEvidenceForOutbound(vaultRoot(), caseId, evidenceId);
 }
 
 async function configuredProviderStore() {

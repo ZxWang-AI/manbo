@@ -13,6 +13,9 @@ test('new chat bridge exposes structured conversation operations without secrets
 test('main chat handlers keep attachment reads behind case IDs and confirmation', async () => {
   const main = await readFile(new URL('./main.cjs', import.meta.url), 'utf8');
   assert.match(main, /readEvidenceForOutbound/);
+  assert.match(main, /import\('\.\.\/core\/evidence-reader\.mjs'\)/);
+  assert.match(main, /reader\.readEvidenceForOutbound\(vaultRoot\(\), caseId, evidenceId\)/);
+  assert.doesNotMatch(main, /bytes\.toString\('utf8'\)|pages:\s*\[\]/);
   assert.match(main, /confirmOutbound/);
   assert.match(main, /input\.confirmation/);
   assert.match(main, /activeChatRequests/);

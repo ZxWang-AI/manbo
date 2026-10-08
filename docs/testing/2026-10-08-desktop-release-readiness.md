@@ -162,3 +162,13 @@ Electron 44.4.5 发布 manifest 没有 postinstall；原生安装脚本须显式
 ### 源码推送收据
 
 本轮源码与依赖变更提交为 `79277128e1344b1e2c2def7fce586cdb1ef6ca68`（`fix: isolate Pi resources and adopt audited 1.1.0 tree`），已通过普通 `git push origin main` 推送。再次查询远程 `refs/heads/main` 与该 SHA 完全一致，推送后的工作树干净。本收据与计划勾选作为后续文档提交记录，不属于上述源码提交；源码推送不代表安装包发布或剩余门禁通过。
+
+## 追加：材料安全验证（2026-10-08）
+
+用户要求“推进安全验证并公开发布”。按材料安全子计划实施，不改变其余发布条件。真实文件的限额导入、storedName 越界和清单 ID 不匹配测试先在旧实现出现 `Missing expected rejection`；reader 新测试初次因模块不存在失败，不能把这类导入错误算作十项行为已复现。实现后目标测试一次出现 junction 测试的重复 teardown ENOENT；移除多余 unlink（测试临时目录统一回收）后回归通过。
+
+固定 Node v24.21.0，Windows x64 全套 **78/78，0 fail、0 skip**，包含真实合成材料在预览后被等长篡改、最终确认拒绝的集成测试；主进程委托契约仅为源码检查，不是 Electron IPC 运行测试。材料读取在打开前/后校验文件类型、链接、identity、大小和变更时间，受限 handle snapshot 实算 SHA-256/长度；清单和目录校验防路径逃逸，文本严格 UTF-8。导入用同一 snapshot 写独立 UUID 副本，源文件不变。Windows junction 和硬链接测试实际创建并被拒绝。
+
+单文件/清单限额 2 MiB，最多 1024 个材料；空文件、超限及硬链接源拒绝。旧超限清单现在拒绝读取，不自动删除或迁移。PDF/未知格式明确拒绝发送；图像只检查 PNG/JPEG/GIF/WebP 格式签名，未做完整解码或像素限额验证。本次应用检查不是针对同用户恶意并发进程的操作系统沙箱。依赖未改，本次未重跑 audit/干净安装。
+
+原阻断项 3 的上述读取边界已修复。IPC sender、凭据后端、请求生命周期、敏感历史/并发迁移、网络控制和四目标安装验收尚未通过；未创建安装包、tag、Actions 或公开 Release，发布总门禁仍未通过。

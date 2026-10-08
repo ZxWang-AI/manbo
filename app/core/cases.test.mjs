@@ -84,3 +84,35 @@ test('concurrent imports do not lose evidence entries', async () => {
   const manifest = await readCase(root, id);
   assert.deepEqual(new Set(manifest.evidence.map((item) => item.id)), new Set(imported.map((item) => item.id)));
 });
+
+test('rejects an oversized import before copying or changing the manifest', async () => {
+  const root = await freshRoot();
+  const source = join(root, 'large.txt');
+  await writeFile(source, Buffer.alloc(2 * 1024 * 1024 + 1, 65));
+  const { id } = await createCase(root);
+  await assert.rejects(importEvidence(root, id, source), /large|limit/i);
+  assert.deepEqual((await readCase(root, id)).evidence, []);
+  assert.deepEqual(await readdir(join(root, id, 'originals')), []);
+});
+
+test('rejects a stored filename escaping its generated evidence ID', async () => {
+  const root = await freshRoot();
+  const source = join(root, 'sample.txt');
+  await writeFile(source, 'safe');
+  const { id } = await createCase(root);
+  await importEvidence(root, id, source);
+  const manifest = await readCase(root, id);
+  manifest.evidence[0].storedName = '../../sample.txt';
+  await writeFile(join(root, id, 'manifest.json'), JSON.stringify(manifest));
+  await assert.rejects(readCase(root, id), /manifest|stored|path/i);
+});
+
+test('rejects a manifest whose ID differs from its directory ID', async () => {
+  const root = await freshRoot();
+  const { id } = await createCase(root);
+  const other = await createCase(root);
+  const manifest = await readCase(root, id);
+  manifest.id = other.id;
+  await writeFile(join(root, id, 'manifest.json'), JSON.stringify(manifest));
+  await assert.rejects(readCase(root, id), /manifest|case ID/i);
+});
