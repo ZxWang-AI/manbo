@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareOutbound, previewOutbound, confirmOutbound } from './outbound-payload.mjs';
+import { prepareOutbound, previewFromPayload, previewOutbound, confirmOutbound } from './outbound-payload.mjs';
 
 const caseManifest = {
   id: 'b99b9d2a-118e-4ff5-a296-730c510cd7e5',
@@ -115,6 +115,21 @@ function confirmationInput() {
     readEvidence: async () => ({ ...file }),
   };
 }
+
+test('attachment preview exposes the exact immutable source-marked parts authorized for sending', async () => {
+  const input = confirmationInput();
+  const payload = await prepareOutbound(input);
+  const preview = previewFromPayload(payload);
+  assert.deepEqual(preview.attachmentParts, payload.messages.at(-1).content.slice(1));
+  assert.equal(preview.attachmentParts[0].text, '[材料：synthetic.txt]\napproved text');
+  assert.equal(preview.attachments[0].sha256, 'e'.repeat(64));
+  assert.throws(() => preview.attachmentParts.push({ type: 'text', text: 'hidden' }), TypeError);
+  assert.throws(() => { preview.attachmentParts[0].text = 'hidden'; }, TypeError);
+  await assert.rejects(confirmOutbound(input, {
+    accepted: true,
+    preview: { ...preview, attachmentParts: [{ type: 'text', text: 'other text' }] },
+  }), /changed/i);
+});
 
 test('confirmation cannot compare a second read to authorize different first-read content', async () => {
   const input = confirmationInput();

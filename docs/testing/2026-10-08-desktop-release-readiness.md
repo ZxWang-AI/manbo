@@ -212,3 +212,49 @@ Key 存储显式拒绝 unavailable/basic_text/未知 Linux 后端；只接受 gn
 测试使用真实 Pi 1.1.0、实际 Node HTTPS、真实 SSE adapter 和本机合成 TLS fixture。仅 trusted test constructor 把已通过公网断言的 TCP 目标映射到 loopback、显式注入测试 CA；TLS chain/hostname 验证仍开启。未受信 CA 与受信 CA 下域名不匹配都在 HTTP body 前拒绝。另一 HTTPS server 在 307 后收到零请求；429/500 恰一次且原错误体不回显。fixture 的私钥是公开测试数据，必须从安装包排除。测试没有使用云端生产接口、用户 Key 或真实案件；公网 IPv6 解析固定不等于实际 IPv6 网络连通性验证。
 
 固定 Node v24.21.0 Windows x64 全套 **177/177，0 fail、0 skip、exit 0**。VM ExperimentalWarning 保留。依赖未改、此次未重跑 audit；原生 Electron 下的 UI/凭据/网络、完整图像边界及四目标安装验收尚未完成。未生成/上传公开 artifact、安装包、tag 或 Release，总门禁仍未通过。
+
+源码推送收据：网络修复 `2f94be8d45838a91244cf258c1e90c68d9bf50d5`（`fix: bind Pi requests to bounded validating HTTPS transport`）已普通推送；原生安全后续开始前远程 main 与该 SHA 相同。
+
+## 追加：Windows 原生应用安全验证（2026-10-08）
+
+执行 `docs/superpowers/plans/2026-10-08-native-alpha-safety.md`，仅在新建的 `manbo-native-safety-*` 临时 profile 中使用合成材料、Provider 和 Key。测试入口在真实 main 加载前设置并核对 userData；生产 main/preload 没有测试 IPC 或 inspector 开关。没有读取/修改用户案件目录，没有使用真实供应商或 Key，没有关闭用户的其他应用。
+
+### 新发现和 red/green 修复
+
+1. 图片签名并不证明完整解码安全。新增真实文件拒绝测试后，删除 signature-only 接收路径；PNG/JPEG/GIF/WebP 及截断样本均明确拒绝发送，源文件与副本哈希不变。界面不再提供图片能力复选框，保存 Provider 固定 images:false。PDF 同样明确不支持；图片/PDF 的本地导入副本不等于可外发。
+2. 首次说明原来只有横幅，没有显式确认。增加 first-use dialog、版本化本地 marker 与初始化/发送门禁；localStorage 不可用时仍须确认且下次再显示。Chromium 的 Escape cancel 可为 noncancelable，事件 preventDefault 不足以保留说明；源码契约先失败，再加 `closedby="none"`，原生 Escape 无法关闭而显式按钮可以。
+3. 附件确认原来仅显示名称/大小。新增测试先因缺少 attachmentParts、缺少完整正文失败；预览现在复用实际 payload 的冻结 parts，不重读文件。renderer 用 textContent 显示完整来源标记正文与 SHA-256，不截断、不执行材料 HTML；修改 preview 正文会使确认失效。原生 UI 预览与真实 Pi 最终 wire 当前正文一致（Pi 合并 prompt 和 attachment text 时插入两个换行），两条授权历史也逐项一致。
+4. 原生子框架没有 Node 或应用桥，但 data: 内嵌文档仍能加载，不能把 will-frame-navigate handler 当作全子框架禁用证明。CSP 契约先失败，再加 `frame-src 'none'`；原生记录到对应 securitypolicyviolation，子文档成为 chrome-error 页面。子框架 sender 拒绝的调用证据仍来自 VM；没有虚称原生子框架实际发起过应用 IPC。
+
+### 原生证据及范围
+
+| 检查 | 实际结果 | 限制 |
+| --- | --- | --- |
+| 环境 | Windows 11 专业版 10.0.22621 / build 22621 x64；Electron 44.4.5、Chromium 152.0.7977.130、内嵌 Node 24.21.0 | 开发入口运行，不是 NSIS 安装验收或 Windows 10 证据 |
+| 实际窗口隔离 | sandbox/contextIsolation/webSecurity=true；nodeIntegration/nodeIntegrationInSubFrames/webviewTag=false；renderer require/process/ipcRenderer 未暴露 | 应用隔离证据，不是操作系统全沙箱证明 |
+| 导航与 IPC | 主窗口 data: 导航/window.open 拒绝；同本地页/preload 的外来真实窗口调用 listProviders/listCases/createCase/listConversations 均被 Untrusted IPC sender 拒绝；内嵌文档由 CSP 拒绝 | 子框架没有应用桥；sender invocation 拒绝另有 VM 测试 |
+| Provider 与凭据 | 恶意显示名以文本呈现，hasKey 元数据不回传 Key；真实 safeStorage 可加解密，密文文件不含合成 plaintext，重启同 profile 可解密 | Windows API 没有返回 Linux backend 名称；不能写成三平台凭据验证或案件加密 |
+| 普通对话/取消确认 | 无需案件，无附件/历史请求；取消 preview 不发请求、回执失效、草稿保留 | 不代表举报渠道导航已交付 |
+| 真实 Pi 合成 HTTPS/SSE | 普通及附件请求分别单次 POST，公网解析固定、TLS 验证保持、tools absent、store:false；附件导入/选择/预览不发请求；成功时 user+assistant 成对保存 | 仅 test-only 模块 redirect 注入合成 CA 和 TCP loopback remap；真实 gateway/Pi/transport/lifecycle 未替换；不是生产云接口验证或供应商零留存承诺 |
+| 敏感历史 | 取消选择附件后，另一次请求不带两条敏感历史或旧材料；重新选定附件的确认框包含实际全文及两条授权历史 | 每次发送都需确认，不开放连续自治工具 |
+| 慢流取消 | 一次 POST 后 UI 标为 unknown，草稿保留，部分回复不落盘，owned connections 归零，原件哈希不变 | 已到达供应商的数据无法撤回，不自动重试 |
+| 最终重启 | 案件四条 delivered 消息、普通对话两条消息恢复；Key 解密匹配；notice marker=accepted；network fixture 尚未加载；源/副本哈希不变 | 同一合成开发 profile；不是安装升级/卸载验证 |
+
+合成文本 153 bytes，源文件与副本前后 SHA-256 均为 `c0d1c25bb8edadd6b87f1a22a721bf38b78bff5dcbb829357f64071239eca663`。最后两个测试进程均正常退出（exit 0），只关闭 `manbo-native-safety` 命名 browser session。临时 profile 仅含合成验收数据，不纳入源码或任何发布资产。
+
+固定 Node v24.21.0 全套 **184/184，0 fail、0 skip、exit 0**；本轮未改依赖，重新执行生产与完整 `npm audit --json` 均 **0 项告警**、exit 0。`git diff --check` 通过，LF/CRLF 提示不是测试失败；VM ExperimentalWarning 保留。audit 只反映当前公告，不等于无供应链风险。
+
+### 当前交付阻断项（不由上述结果豁免）
+
+| 目标 | 安装包与系统验收 | 凭据/隔离 | 签名状态 |
+| --- | --- | --- | --- |
+| Windows NSIS x64 | 未构建、未安装/卸载；不能用开发启动代替 | 只有上述 Windows 11 开发入口证据，需安装包复验 | 未配置发布签名 |
+| macOS DMG x64 | 未构建、未挂载/启动/移除 | 没有 Intel 原生验证 | 无签名/公证配置 |
+| macOS DMG arm64 | 未构建、未挂载/启动/移除 | 没有 Apple Silicon 原生验证 | 无签名/公证配置 |
+| Linux AppImage x64 | 未构建、未启动/移除；未记录发行版/桌面要求 | 未验证真实 gnome_libsecret/kwallet；basic_text 必须拒绝 | 未做发布者签名 |
+
+GitHub 只读检查仍为：Release 列表为空、可见 Secret 列表为空、自托管 runner 数量为零。自托管 runner 数量不代表 GitHub 托管构建 runner 不可用；但托管 runner 的构建成功也不能代替目标系统的安装、正常启动和凭据验收。签名证书、Apple 公证资料及目标验收环境需另行提供/协调，不把它们硬编码进项目。
+
+Windows 应用层子门禁已取得上述行为证据，**Desktop 发布总门禁仍未通过**。尚未引入 electron-builder、Actions workflow 或任何自动更新器；没有生成/上传公共 artifacts、tag 或 Release。ASAR 实际运行资源白名单、完整产物秘密/内容检查、许可证及四目标安装验收仍是包装阶段的必做项，不能仅凭配置声明通过。未签名候选可以在本机准备，但若系统防护阻止启动，不得绕过或记为正常安装通过；四目标须一起验收，不悄悄改为 Windows 单平台公开完成。
+
+Pi 文件/终端/MCP/codemode/自治/自动举报仍关闭；没有增加材料托管。知识库检索、结构化证据链、用户导出、举报操作引导仍未交付。首次说明准确区分本地记录、系统 Key 加密和用户云供应商处理，不使用“全部本机执行”或“无额外信息保护责任”作为免责承诺。

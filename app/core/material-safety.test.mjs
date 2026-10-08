@@ -96,6 +96,20 @@ test('an image extension cannot disguise non-image bytes', async (t) => {
   await assert.rejects(readEvidenceForOutbound(root, id, item.id), /image|signature/i);
 });
 
+test('unverified image formats fail closed even with valid signatures and leave originals intact', async (t) => {
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aT3sAAAAASUVORK5CYII=','base64');
+  for (const [name,content] of [
+    ['sample.png',png], ['truncated.png',png.subarray(0,12)],
+    ['sample.jpeg',Buffer.from([0xff,0xd8,0xff,0xe0])],
+    ['sample.gif',Buffer.from('GIF89a')],
+    ['sample.webp',Buffer.from('52494646080000005745425056503820','hex')],
+  ]) {
+    const {root,id,item,source,target}=await fixture(t,content,name);
+    await assert.rejects(readEvidenceForOutbound(root,id,item.id), /Image extraction is unsupported/);
+    for (const file of [source,target]) assert.equal(createHash('sha256').update(await readFile(file)).digest('hex'),item.sha256);
+  }
+});
+
 test('path-like and unknown evidence IDs cannot trigger a read outside the manifest', async (t) => {
   const { root, id } = await fixture(t);
   await assert.rejects(readEvidenceForOutbound(root, id, '../sample.txt'), /ID/i);

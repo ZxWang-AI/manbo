@@ -65,7 +65,7 @@ assert.equal(serverRequests[0].path, '/v1/chat/completions');
 assert.equal(serverRequests[0].body.tools, undefined);
 ```
 
-- [ ] Run focused then full `node --test 'app/**/*.test.mjs'`; inspect diff for secret/error/TLS bypass; record evidence precisely as Node HTTPS with real Pi, not native Electron. Ordinary commit/push and verify remote main SHA.
+- [x] Run focused then full `node --test 'app/**/*.test.mjs'`; inspect diff for secret/error/TLS bypass; record evidence precisely as Node HTTPS with real Pi, not native Electron. Ordinary commit/push and verify remote main SHA. Receipt: `2f94be8d45838a91244cf258c1e90c68d9bf50d5`, 177/177 full and 21/21 real-Pi network tests; remote main matched before the native safety follow-up.
 
 ## Self-review
 

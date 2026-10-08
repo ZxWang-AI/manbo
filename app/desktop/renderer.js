@@ -28,7 +28,7 @@ const uiError = '操作未完成，草稿已保留；请检查本地配置后重
 function setBusy(value) {
   busy = value;
   for (const control of document.querySelectorAll('button, input, textarea, select')) {
-    if (!['accept-confirm','cancel-confirm','cancel-request','toggle-rail'].includes(control.id)) control.disabled = value;
+    if (!['accept-confirm','cancel-confirm','cancel-request','toggle-rail','accept-privacy'].includes(control.id)) control.disabled = value;
   }
   $('#import-evidence').disabled = value || !activeCase;
   updateSendState();
@@ -228,7 +228,15 @@ function renderConfirmation(preview) {
   header.append(name,endpoint,details); copy.append(header);
   const list = document.createElement('ul'); list.className = 'confirm-list';
   if (!preview.attachments.length) { const row = document.createElement('li'); row.textContent = '本次没有附件；只发送提示词和明确授权的干净上下文。'; list.append(row); }
-  for (const item of preview.attachments) { const row = document.createElement('li'); row.textContent = `${item.name} · ${item.representation}${item.pages ? ` · 第 ${item.pages.join(', ')} 页` : ''} · ${item.bytes} bytes`; list.append(row); }
+  for (const [index, item] of preview.attachments.entries()) {
+    const row = document.createElement('li');
+    row.textContent = `${item.name} · ${item.representation}${item.pages ? ` · 第 ${item.pages.join(', ')} 页` : ''} · ${item.bytes} bytes\nSHA-256：${item.sha256}`;
+    const part = preview.attachmentParts[index];
+    if (part?.type === 'text') {
+      const body = document.createElement('pre'); body.className = 'history-preview'; body.textContent = part.text; row.append(body);
+    }
+    list.append(row);
+  }
   const prompt = document.createElement('p'); prompt.textContent = `提示词：${preview.prompt}`; copy.append(list, prompt);
   const context = preview.contextMessages ?? [];
   const historyTitle = document.createElement('p'); historyTitle.textContent = `本次包含 ${context.length} 条历史消息；${omittedHistory} 条未授权、未完成或超出数量范围的历史不会发送。`; copy.append(historyTitle);
@@ -317,7 +325,23 @@ $('#clear-attachments').addEventListener('click', () => { if(busy) return; selec
 $('#toggle-rail').addEventListener('click', () => appShell.classList.toggle('rail-open'));
 $('#settings').addEventListener('click', () => { if(busy) return; setProviderStatus('Key 不会显示；保存新的 Key 会替换旧值。'); settingsDialog.showModal(); });
 $('#close-settings').addEventListener('click', () => settingsDialog.close());
-$('#save-provider').addEventListener('click', async () => { if(busy) return; setBusy(true); try { const config = { id: $('#provider-id').value, name: $('#provider-name').value, kind: 'openai-compatible', model: $('#provider-model').value, endpoint: $('#provider-endpoint').value, capabilities: { images: $('#provider-images').checked } }; await window.manbo.saveProvider(config, $('#provider-secret').value); $('#provider-secret').value = ''; await refreshProviders(); settingsDialog.close(); setStatus('Provider 已保存到本机系统凭据存储。'); } catch { setProviderStatus('Provider 保存失败，请检查 HTTPS 地址和系统凭据后端。', true); } finally {setBusy(false);} });
+$('#save-provider').addEventListener('click', async () => { if(busy) return; setBusy(true); try { const config = { id: $('#provider-id').value, name: $('#provider-name').value, kind: 'openai-compatible', model: $('#provider-model').value, endpoint: $('#provider-endpoint').value, capabilities: { images: false } }; await window.manbo.saveProvider(config, $('#provider-secret').value); $('#provider-secret').value = ''; await refreshProviders(); settingsDialog.close(); setStatus('Provider 已保存到本机系统凭据存储。'); } catch { setProviderStatus('Provider 保存失败，请检查 HTTPS 地址和系统凭据后端。', true); } finally {setBusy(false);} });
 
+let noticeAccepted = false;
+function initializeWorkspace() {
+  setBusy(true);
+  return Promise.all([refreshProviders(), refreshConversations()]).catch(() => setStatus(uiError,true)).finally(() => setBusy(false));
+}
+const privacyNotice = $('#privacy-notice');
+privacyNotice.addEventListener('cancel', (event) => event.preventDefault());
+$('#accept-privacy').addEventListener('click', async () => {
+  if (noticeAccepted) return;
+  noticeAccepted = true;
+  try { window.localStorage.setItem('manbo-notice-v1','accepted'); } catch { /* Show again next launch if local storage is unavailable. */ }
+  privacyNotice.close();
+  await initializeWorkspace();
+});
 setBusy(true);
-Promise.all([refreshProviders(), refreshConversations()]).catch(() => setStatus(uiError,true)).finally(() => setBusy(false));
+try { noticeAccepted = window.localStorage.getItem('manbo-notice-v1') === 'accepted'; } catch { /* Fail closed to an explicit acknowledgement. */ }
+if (noticeAccepted) void initializeWorkspace();
+else privacyNotice.showModal();

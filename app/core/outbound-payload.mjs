@@ -151,6 +151,7 @@ export function previewFromPayload(payload) {
     model: payload.model,
     prompt: payload.prompt,
     attachments: payload.attachments,
+    attachmentParts: Object.freeze(payload.messages.at(-1).content.slice(1)),
     scope: payload.scope,
     contextMessageIds: payload.scope.contextMessageIds,
     contextMessages: payload.context,
