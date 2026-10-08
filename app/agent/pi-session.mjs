@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 const EMPTY_RESOURCES = Object.freeze([]);
 
-export async function createNoToolSession({ cwd, sdk: injectedSdk, tools } = {}) {
+export async function createNoToolSession({ cwd, sdk: injectedSdk, tools, modelRuntime, selectedModel, model } = {}) {
   if (tools !== undefined) throw new Error('Pi tools cannot be overridden in no-tool mode');
   if (typeof cwd !== 'string' || !cwd) throw new Error('An existing cwd is required');
   const absoluteCwd = resolve(cwd);
@@ -29,6 +29,8 @@ export async function createNoToolSession({ cwd, sdk: injectedSdk, tools } = {})
     await resourceLoader.reload();
     const { session } = await sdk.createAgentSession({
       cwd: absoluteCwd,
+      modelRuntime,
+      model: selectedModel,
       noTools: 'all',
       tools: [],
       sessionManager: sdk.SessionManager.inMemory(),

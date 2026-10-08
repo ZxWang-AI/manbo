@@ -11,6 +11,7 @@ test('lists a local demo provider without exposing a secret', async () => {
     kind: 'demo',
     model: 'local-demo-1',
     endpoint: null,
+    capabilities: { images: false, maxInputBytes: 2 * 1024 * 1024, api: 'demo' },
     hasKey: false,
   }]);
   assert.equal(providers[0].secret, undefined);
@@ -33,6 +34,7 @@ test('saves custom provider metadata separately from its secret', async () => {
     kind: 'openai-compatible',
     model: 'my-model',
     endpoint: 'https://example.test/v1/chat/completions',
+    capabilities: { images: false, maxInputBytes: 2 * 1024 * 1024, api: 'openai-completions' },
     hasKey: true,
   });
   assert.deepEqual(await store.get('custom-openai'), 'sk-secret-value');

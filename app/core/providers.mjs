@@ -7,6 +7,7 @@ const DEMO_PROVIDER = Object.freeze({
   kind: 'demo',
   model: 'local-demo-1',
   endpoint: null,
+  capabilities: Object.freeze({ images: false, maxInputBytes: 2 * 1024 * 1024, api: 'demo' }),
 });
 
 function cleanText(value, field, max = 120) {
@@ -25,6 +26,14 @@ function normalizeConfig(input) {
   const model = cleanText(input.model, 'model', 160);
   const name = cleanText(input.name, 'name', 120);
   let endpoint = null;
+  const requestedCapabilities = input.capabilities && typeof input.capabilities === 'object' ? input.capabilities : {};
+  const capabilities = Object.freeze({
+    images: requestedCapabilities.images === true,
+    maxInputBytes: Number.isSafeInteger(requestedCapabilities.maxInputBytes) && requestedCapabilities.maxInputBytes > 0
+      ? Math.min(requestedCapabilities.maxInputBytes, 20 * 1024 * 1024)
+      : 2 * 1024 * 1024,
+    api: 'openai-completions',
+  });
   if (kind === 'openai-compatible') {
     if (typeof input.endpoint !== 'string') throw new Error('Invalid provider endpoint');
     let url;
@@ -32,7 +41,7 @@ function normalizeConfig(input) {
     if (url.protocol !== 'https:') throw new Error('Provider endpoint must use HTTPS');
     endpoint = url.toString().replace(/\/$/, '');
   }
-  return Object.freeze({ id, name, kind, model, endpoint });
+  return Object.freeze({ id, name, kind, model, endpoint, capabilities: kind === 'demo' ? DEMO_PROVIDER.capabilities : capabilities });
 }
 
 function publicConfig(config, hasKey) {
