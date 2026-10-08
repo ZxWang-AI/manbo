@@ -59,5 +59,5 @@
 
 - [x] Record actual targeted/full-test counts, dependency audit and fixed blockers; keep remaining release blockers explicit. Preserved first-check history and appended repair evidence; README now reports 60/60 with the event-stream and audit limitations.
 - [x] Write the agreed three-platform Alpha packaging spec: Windows NSIS x64, macOS DMG x64/arm64, Linux AppImage x64; native GitHub Actions runners; allowlist package contents; no secrets/user data; SHA-256; accurate unsigned/pre-release warnings; manual publish only after required gates.
-- [ ] Review the written spec for ambiguous scope/claims. Commit and push ordinary `main` updates (`git push origin main`); verify remote HEAD with `git ls-remote origin refs/heads/main`.
-- [ ] Ask the user to review the new written packaging spec before its implementation plan. Do not create a Release/tag or claim installers exist during these preflight repairs.
+- [x] Review the written spec for ambiguous scope/claims. Commit and push ordinary `main` updates (`git push origin main`); verify remote HEAD with `git ls-remote origin refs/heads/main`. Commit `e06e78208a68c838b0cd8f54b12570057d796502` was verified against remote main again on 2026-10-08.
+- [x] Ask the user to review the new written packaging spec before its implementation plan. The user replied “确认”; the written spec is approved. No Release/tag or installer was created. Task 3 remains blocked pending the separately reviewed dependency strategy.

@@ -80,4 +80,36 @@
 
 结构化证据链、用户导出、知识库检索、具体举报操作引导仍是产品目标，不是当前已交付能力。文件、终端与自治工具继续禁用；所有 Desktop Gate 总项继续保持未通过。
 
-三平台包装的书面范围见 `docs/superpowers/specs/2026-10-08-desktop-alpha-release-design.md`，待用户审阅后制定实施计划。源代码推送与安装包公开发布分开记录。
+三平台包装的书面范围见 `docs/superpowers/specs/2026-10-08-desktop-alpha-release-design.md`。用户已回复“确认”，书面范围获批准；独立 Pi 依赖策略尚未批准，包装实现仍需等待前置门禁。源代码推送与安装包公开发布分开记录。
+
+## 追加：Pi 候选包只读评估（2026-10-08）
+
+本轮只查询 npm registry，并用 `npm pack --ignore-scripts` 将候选发布包下载到独立临时目录，读取归档文件和接口源码；没有安装或运行候选 SDK。应用的 `package.json`、`package-lock.json` 和 node_modules 均未变更，当前 Pi 仍为 0.87.1。本轮没有重新执行测试；上节 60/60 的证据不能移用于新版本。
+
+### 可核对的发现
+
+| 候选发布包 | 发布日期（包内 changelog） | 实际包含 shrinkwrap | manifest 的 brace-expansion | Node engines |
+| --- | --- | --- | --- | --- |
+| Pi 1.0.4 | 2026-10-05 | 否 | 精确 5.0.12 | >=22.19.0 |
+| Pi 1.1.0 | 2026-10-07 | 否 | 精确 5.0.12 | >=22.19.0 |
+
+下载字节的 SHA-512 与 npm registry integrity 相同：
+
+- 1.0.4：`sha512-+956nfMFHr5lDUVY/2Q4k+YzojzBuCaBXFgj0eSlXVGr7QVliVddKdc1Pz6yVg1dOlJQmb67doOVrlMsIcIdaw==`。
+- 1.1.0：`sha512-SeEi/4hdcHNgA9UWlefZl7ZZpm3dzi2OoxNjDHsBJ9o298LNOtbL4DGKgitlEj6uCTccvtw6f2hlCkTPVJ2RXg==`。
+
+包内 1.0.1 changelog 明确记录：固定 brace-expansion 5.0.12 处理三个已公告 DoS 问题，并从 npm 发布包移除 shrinkwrap，允许库使用者覆盖间接依赖。因此存在上游修复路线，不再只有本地手工修补这个选项。包内说明、manifest 和完整性核对仍不能证明干净安装后的依赖树没有漏洞；必须另做安装与审计。
+
+1.1.0 的发布接口仍提供 `ModelRuntime.create` 的显式 credentials、`modelsPath:null`、`refreshOnCreate:false`、`allowModelNetwork:false`，以及 `setRuntimeApiKey`、`createAgentSession`、内存设置/会话、resource loader 覆盖、prompt/abort/dispose。`modelsPath:null` 在被检查的创建源码中选择内存模型存储。这里只确认接口/分支存在，不宣称当前适配器可直接兼容。
+
+新版本包含 `pi-mcp`、`pi-codemode` 和 `quickjs-wasi`。1.1.0 的 `tools:[]`/`noTools:'all'` 源码对 MCP 也施加空白名单；resource loader 仍有包资源解析过程。不能仅凭设置或工具展示列表判断没有项目发现、扩展副作用、子进程或额外网络访问。后续必须同时检查 active、callable 和 registered 工具为空、扩展为空，并用合成环境检测发现与副作用。
+
+1.0.4/1.1.0 对 Pi 子包均使用 caret 范围；只固定顶层版本不会自动使子包同版或得到可复现树。后续评估必须记录实际解析版本和完整 lockfile，再用独立干净安装重放该 lockfile；不能把浮动解析结果写成已锁定或以顶层 manifest 代替实际树。
+
+### 独立处理策略提案（待用户批准，不是实施授权）
+
+1. **推荐：受控评估 Pi 1.1.0。** 在应用副本的独立临时评估目录中固定顶层 1.1.0，记录实际依赖与 lockfile；先进行无安装脚本的依赖审查，再运行受控兼容测试。补充零可调用/注册工具、无全局/项目资源发现、无凭据持久化与额外请求的回归。不得启用 MCP、codemode、文件/终端或自治能力。只有干净安装审计无未处置生产 high/critical 且原有与新增隔离测试全部通过，才将已验证的依赖变更纳入 main。若需要改变现有 API/会话适配器，须先给出失败测试和针对性修复；不因测试失败改弱断言。此路线利用已发布上游修复，代价是跨版本兼容审查；不宣称评估一定成功。
+2. **备选：维护 0.87.1 的可复现修补分发。** 需固定上游来源/完整性、修补依赖锁和发布包、审核许可证并维护与原包差异；独立干净安装及同等回归仍不可省略。当前未验证这条路线，不手改本机 node_modules、不继续采用已证明无效的根 override。维护成本高于采用现有上游修复，不推荐作为首选。
+3. **备选：保留当前依赖并暂停发布。** 不增加 SDK 迁移风险，但生产 high 告警保留，不能生成对外 Alpha 资产；等待后仍须审阅与验证修复。
+
+推荐路线的批准仅允许受控依赖评估及通过门禁后的定向修复，不授权扩展 agent 权限、自动升级 Electron、创建公开 Release、使用真实案件或真实 API Key。独立策略确认后先制定该子项目的精确实施计划；材料读取、历史/IPC/网络/凭据边界分别规划，全部结案后才规划打包。
