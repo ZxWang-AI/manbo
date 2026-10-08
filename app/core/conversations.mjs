@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { assertLocalDirectory } from './local-files.mjs';
+import { readLocalJson, serializeLocalMutation, writeLocalJson } from './local-json.mjs';
 
-const caseIdPattern = /^[0-9a-f-]{36}$/i;
+const caseIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const roles = new Set(['user', 'assistant']);
 
 function conversationPath(root, caseId) {
@@ -17,7 +19,9 @@ function validateMessage(message) {
     throw new Error('Invalid conversation text');
   }
   const evidenceIds = message.evidenceIds ?? [];
-  if (!Array.isArray(evidenceIds) || evidenceIds.some((id) => typeof id !== 'string' || !id) || new Set(evidenceIds).size !== evidenceIds.length) {
+  if (!Array.isArray(evidenceIds) || evidenceIds.length > 1024
+    || evidenceIds.some((id) => typeof id !== 'string' || !id.trim() || id.length > 256 || /[\u0000-\u001f\u007f]/.test(id))
+    || new Set(evidenceIds).size !== evidenceIds.length) {
     throw new Error('Invalid conversation evidence IDs');
   }
   return { role: message.role, text: message.text, evidenceIds: [...evidenceIds] };
@@ -29,17 +33,11 @@ function blankConversation(caseId) {
 }
 
 async function saveConversation(root, caseId, conversation) {
-  const file = conversationPath(root, caseId);
+  conversationPath(root, caseId);
   const directory = join(root, caseId);
-  await mkdir(directory, { recursive: true });
-  const temporary = join(directory, `conversation.${randomUUID()}.tmp`);
-  try {
-    await writeFile(temporary, JSON.stringify(conversation, null, 2), { flag: 'wx', mode: 0o600 });
-    await rename(temporary, file);
-  } catch (error) {
-    await unlink(temporary).catch(() => {});
-    throw error;
-  }
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  await assertLocalDirectory(root);
+  await writeLocalJson(directory, 'conversation.json', normalizeConversation(conversation, caseId), 4 * 1024 * 1024);
 }
 
 export async function createConversation(root, caseId) {
@@ -48,17 +46,34 @@ export async function createConversation(root, caseId) {
   return conversation;
 }
 
-export async function readConversation(root, caseId) {
-  const file = conversationPath(root, caseId);
+function normalizeConversation(value, caseId) {
+  if (!value || value.caseId !== caseId || !caseIdPattern.test(value.id)
+    || !Array.isArray(value.messages) || value.messages.length > 1024
+    || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt))
+    || typeof value.updatedAt !== 'string' || !Number.isFinite(Date.parse(value.updatedAt))) throw new Error('Invalid legacy conversation');
+  const ids = new Set();
+  const messages = value.messages.map((message) => {
+    if (!message || typeof message.id !== 'string' || !caseIdPattern.test(message.id) || ids.has(message.id)
+      || typeof message.createdAt !== 'string' || !Number.isFinite(Date.parse(message.createdAt))) throw new Error('Invalid legacy message');
+    ids.add(message.id);
+    return { id: message.id, ...validateMessage(message), createdAt: message.createdAt };
+  });
+  return { id: value.id, caseId, createdAt: value.createdAt, updatedAt: value.updatedAt, messages };
+}
+
+export async function readConversation(root, caseId, options = {}) {
+  conversationPath(root, caseId);
   try {
-    return JSON.parse(await readFile(file, 'utf8'));
+    const missing = Symbol('missing');
+    const value = await readLocalJson(join(root, caseId), 'conversation.json', missing, 4 * 1024 * 1024);
+    return value !== missing ? normalizeConversation(value, caseId) : options.missing === null ? null : blankConversation(caseId);
   } catch (error) {
-    if (error.code === 'ENOENT') return blankConversation(caseId);
+    if (error.code === 'ENOENT') return options.missing === null ? null : blankConversation(caseId);
     throw new Error('Conversation is unreadable');
   }
 }
 
-export async function appendMessage(root, caseId, message) {
+async function appendOne(root, caseId, message) {
   const conversation = await readConversation(root, caseId);
   const normalized = validateMessage(message);
   const entry = Object.freeze({ id: randomUUID(), ...normalized, createdAt: new Date().toISOString() });
@@ -69,4 +84,9 @@ export async function appendMessage(root, caseId, message) {
   };
   await saveConversation(root, caseId, next);
   return entry;
+}
+
+export function appendMessage(root, caseId, message) {
+  conversationPath(root, caseId);
+  return serializeLocalMutation(join(root, caseId), 'conversation.json', () => appendOne(root, caseId, message));
 }

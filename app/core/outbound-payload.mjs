@@ -95,15 +95,22 @@ async function prepareAttachment(manifestItem, readEvidence, capabilities, maxBy
 
 function contextMessages(conversation, draft) {
   const requested = draft.contextMessageIds ?? [];
-  if (!Array.isArray(requested)) throw new Error('Context message IDs must be an array');
-  if (!conversation) return [];
+  if (!Array.isArray(requested) || new Set(requested).size !== requested.length
+    || requested.some((id) => typeof id !== 'string' || !id || id.length > 256)) throw new Error('Duplicate or invalid context message IDs');
+  if (requested.length > 40) throw new Error('Context count limit exceeded');
   const messages = Array.isArray(conversation.messages) ? conversation.messages : [];
   const selected = requested.length ? messages.filter((message) => requested.includes(message.id)) : [];
   if (selected.length !== requested.length) throw new Error('Unknown context message ID');
-  if (selected.some((message) => (message.evidenceIds ?? []).length > 0) && normalizeIds(draft.selectedEvidenceIds ?? []).length === 0) {
-    throw new Error('Sensitive context requires explicitly selected evidence');
-  }
-  return selected.map((message) => ({ role: message.role, content: [{ type: 'text', text: message.text }] }));
+  const allowed = new Set(draft.selectedEvidenceIds ?? []);
+  return selected.map((message) => {
+    if (!['user', 'assistant'].includes(message.role) || typeof message.text !== 'string' || !message.text.trim() || message.text.length > 20000
+      || (message.delivery?.status && message.delivery.status !== 'delivered')) throw new Error('Invalid or undelivered context message');
+    const segment = (conversation?.segments ?? []).find((item) => item.id === message.segmentId);
+    if (message.segmentId && !segment) throw new Error('Unknown context segment');
+    const evidenceIds = normalizeIds([...new Set([...(message.evidenceIds ?? []), ...(segment?.evidenceIds ?? [])])]);
+    if (evidenceIds.some((id) => !allowed.has(id))) throw new Error('Sensitive context requires every evidence source to be explicitly selected');
+    return { id: message.id, role: message.role, text: message.text, evidenceIds };
+  });
 }
 
 export async function prepareOutbound({ caseManifest, conversation, draft, readEvidence, capabilities = {}, maxBytes = defaultMaxBytes } = {}) {
@@ -111,15 +118,17 @@ export async function prepareOutbound({ caseManifest, conversation, draft, readE
   if (draft.mode !== 'task') throw new Error('Autonomous mode is unavailable until Pi tools are verified');
   if (typeof draft.provider !== 'string' || !draft.provider.trim()) throw new Error('Provider is required');
   if (typeof draft.model !== 'string' || !draft.model.trim()) throw new Error('Model is required');
-  if (typeof draft.prompt !== 'string' || !draft.prompt.trim()) throw new Error('Prompt is required');
+  if (typeof draft.prompt !== 'string' || !draft.prompt.trim() || draft.prompt.length > 20000) throw new Error('Prompt is empty or exceeds the text limit');
   if (typeof readEvidence !== 'function') throw new Error('Evidence reader is required');
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error('Invalid evidence size limit');
   const ids = normalizeIds(draft.selectedEvidenceIds ?? []);
+  if (ids.length > 16) throw new Error('Attachment count limit exceeded');
+  const context = contextMessages(conversation ?? { messages: [] }, draft);
   const manifestItems = manifestEvidence(caseManifest ?? { evidence: [] }, ids);
   const prepared = [];
   for (const item of manifestItems) prepared.push(await prepareAttachment(item, readEvidence, capabilities, maxBytes));
   const content = [{ type: 'text', text: draft.prompt.trim() }, ...prepared.map((item) => item.part)];
-  const messages = [...contextMessages(conversation, draft), { role: 'user', content }];
+  const messages = [...context.map((message) => ({ role: message.role, content: [{ type: 'text', text: message.text }] })), { role: 'user', content }];
   const scope = Object.freeze({ evidenceIds: Object.freeze([...ids]), contextMessageIds: Object.freeze([...(draft.contextMessageIds ?? [])]) });
   const attachments = Object.freeze(prepared.map((item) => Object.freeze(item.summary)));
   const payload = {
@@ -127,9 +136,12 @@ export async function prepareOutbound({ caseManifest, conversation, draft, readE
     model: draft.model,
     prompt: draft.prompt.trim(),
     messages,
+    context,
     attachments,
     scope,
   };
+  const totalLimit = Math.min(defaultMaxBytes, capabilities.maxInputBytes ?? defaultMaxBytes);
+  if (!Number.isSafeInteger(totalLimit) || totalLimit < 1 || Buffer.byteLength(JSON.stringify(payload), 'utf8') > totalLimit) throw new Error('Total outbound request size limit exceeded');
   return deepFreeze({ ...payload, requestHash: hash(payload) });
 }
 
@@ -141,6 +153,7 @@ function previewFromPayload(payload) {
     attachments: payload.attachments,
     scope: payload.scope,
     contextMessageIds: payload.scope.contextMessageIds,
+    contextMessages: payload.context,
     requestHash: payload.requestHash,
   });
 }

@@ -141,8 +141,10 @@ handle('chat:send', async (event, caseId, draft, confirmation) => {
   return Object.freeze({ ...result, messages: [userMessage, assistantMessage] });
 });
 
+let chatStorePromise;
 function chatStore() {
-  return import('../core/chat-store.mjs').then(({ createChatStore }) => createChatStore(vaultRoot()));
+  chatStorePromise ??= import('../core/chat-store.mjs').then(({ createChatStore }) => createChatStore(vaultRoot()));
+  return chatStorePromise;
 }
 
 async function readEvidenceForOutbound(caseId, evidenceId) {
@@ -160,7 +162,14 @@ async function configuredProviderStore() {
 handle('conversation:list', async () => (await chatStore()).list());
 handle('conversation:create', async (event, options = {}) => {
   if (!options || typeof options !== 'object') throw new Error('Invalid conversation options');
-  return (await chatStore()).create({ caseId: options.caseId ?? null, title: options.title });
+  const store = await chatStore();
+  if (options.caseId) {
+    const { readCase } = await import('../core/cases.mjs');
+    await readCase(vaultRoot(), options.caseId);
+    const migrated = await store.migrateLegacy(options.caseId);
+    if (migrated) return migrated;
+  }
+  return store.create({ caseId: options.caseId ?? null, title: options.title });
 });
 handle('conversation:load', async (event, conversationId) => (await chatStore()).read(conversationId));
 handle('chat:preview-v2', async (event, input = {}) => {

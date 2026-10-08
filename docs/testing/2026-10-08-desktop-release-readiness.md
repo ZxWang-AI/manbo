@@ -182,3 +182,11 @@ Electron 44.4.5 发布 manifest 没有 postinstall；原生安装脚本须显式
 Key 存储显式拒绝 unavailable/basic_text/未知 Linux 后端；只接受 gnome_libsecret/kwallet/kwallet5/kwallet6。ciphertext 编码/条数/限额校验；strict UTF-8、single-link regular file、canonical directory、随机 UUID 临时文件和 0600 权限；进程内按规范 root+文件队列串行，多个 store 实例/重启不会丢失不同 Key。Provider 元数据同样 bounded/normalized/串行，拒绝 URL 用户名密码/查询/fragment 和超长或控制字符 Key，公开返回 hasKey 而非秘密。共享 local-json 模块仅实现受限 JSON I/O 和串行化。metadata 与 ciphertext 跨文件更新不是 crash-atomic transaction，失败可能留下孤立加密记录；不声称 Key 和案件统一加密。
 
 固定 Node v24.21.0 Windows x64 全套 **93/93，0 fail、0 skip**；VM 默认动态导入器有 Node ExperimentalWarning，保留可见，不隐藏诊断。凭据 encrypt/decrypt 使用合成 native double，只证明应用边界，不证明 Windows/macOS/Linux 的 OS 后端可用。依赖没有变，本轮未运行 audit 或原生 Electron。剩余：历史/迁移/并发会话、用户取消与重复确认、图片解码、DNS/IPv6/重定向/HTTP/SSE/总限额、四目标安装验收；发布总门禁仍未通过。
+
+## 追加：历史存储与外发来源授权（2026-10-08）
+
+执行 history-safety 子计划。初始九项测试复现并发丢消息、字段未过滤、来源洗白、linked record、逐项授权/正文预览/限额缺失；迁移初次为缺方法错误，不作为已有迁移行为漏洞证据。补充测试进一步复现损坏为 null 的旧记录被当作缺失、损坏目标被覆盖，以及控制字符来源未拒绝。最后一项附件数量测试初次先在缺 context 路径失败，后半附件断言不算独立 red 证据。
+
+现在记录按文件队列串行、严格 normalized whitelist、4 MiB/1024 条限额、单链接和 canonical 路径校验。旧记录迁移保留 ID、source 字节不变、幂等；损坏 source/target 拒绝，累计来源保守传播。每条消息继承 segment 全部来源；外发历史必须逐项选中所有来源，未授权时在材料读取前拒绝。预览数据包含实际正文和来源；prompt <=20000 字符、历史 <=40 条、附件 <=16，聚合 JSON <=2 MiB 或更小 Provider 上限。
+
+固定 Node v24.21.0 Windows x64 全套 **107/107，0 fail、0 skip，exit 0**。真实 main 源的迁移 handler 在 VM/native interface double 下验证，不代表 Electron 安装运行。队列仅进程内；conversation 未加密；聚合 JSON 是保守应用限额，不是最终 HTTP wire body 限额。确认 UI 尚未展示 contextMessages，连续对话选择、single-use receipt/重复发送/及时取消、网络传输、图片解码及四目标安装仍待验证。本轮未改依赖、未跑 audit、未生成安装包/tag/Release。

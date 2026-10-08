@@ -7,6 +7,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createConversation as createLegacyConversation, appendMessage } from '../core/conversations.mjs';
 
 const mainUrl = new URL('./main.cjs', import.meta.url);
 const mainFile = fileURLToPath(mainUrl);
@@ -119,4 +120,16 @@ test('trusted IPC failures never forward native error contents to the renderer',
     assert.doesNotMatch(error.message, /SYNTHETIC|prompt body|echoed/);
     return /操作未完成/.test(error.message);
   });
+});
+
+test('case conversation creation migrates an existing legacy conversation without altering it', async (t) => {
+  const { root, handlers, trusted } = await fixture(t);
+  const currentCase = await handlers.get('case:create')(trusted);
+  const legacy = await createLegacyConversation(join(root, 'cases'), currentCase.id);
+  await appendMessage(join(root, 'cases'), currentCase.id, { role: 'user', text: 'Synthetic legacy note', evidenceIds: [] });
+  const source = join(root, 'cases', currentCase.id, 'conversation.json'); const before = await readFile(source);
+  const conversation = await handlers.get('conversation:create')(trusted, { caseId: currentCase.id });
+  assert.equal(conversation.id, legacy.id);
+  assert.equal(conversation.messages[0].text, 'Synthetic legacy note');
+  assert.deepEqual(await readFile(source), before);
 });

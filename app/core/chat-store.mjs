@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { assertLocalDirectory } from './local-files.mjs';
+import { readLocalJson, serializeLocalMutation, writeLocalJson } from './local-json.mjs';
+import { readConversation } from './conversations.mjs';
 
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const roles = new Set(['user', 'assistant']);
 const sensitivities = new Set(['clean', 'evidence']);
 const deliveryStatuses = new Set(['pending', 'queued', 'delivered', 'failed', 'unknown']);
 const timestamps = new Map();
+const maxConversationBytes = 4 * 1024 * 1024;
 
 function assertRoot(root) {
   if (typeof root !== 'string' || !root.trim()) throw new Error('Conversation root is required');
@@ -26,8 +30,8 @@ function normalizeProviderId(providerId) {
 }
 
 function normalizeEvidenceIds(evidenceIds) {
-  if (!Array.isArray(evidenceIds)) throw new Error('Invalid conversation evidence IDs');
-  if (evidenceIds.some((id) => typeof id !== 'string' || !id.trim() || id.length > 256 || /[\0\r\n]/.test(id))) {
+  if (!Array.isArray(evidenceIds) || evidenceIds.length > 1024) throw new Error('Invalid conversation evidence IDs');
+  if (evidenceIds.some((id) => typeof id !== 'string' || !id.trim() || id.length > 256 || /[\u0000-\u001f\u007f]/.test(id))) {
     throw new Error('Invalid conversation evidence IDs');
   }
   if (new Set(evidenceIds).size !== evidenceIds.length) throw new Error('Duplicate conversation evidence IDs');
@@ -94,7 +98,8 @@ function normalizeMessageInput(message, segment) {
   const providerId = message.providerId === undefined ? segment.providerId : normalizeProviderId(message.providerId);
   if (providerId !== segment.providerId) throw new Error('Message provider does not match segment provider');
   const delivery = normalizeDelivery(message.delivery);
-  return { role: message.role, text: message.text, evidenceIds, providerId, ...(delivery ? { delivery } : {}) };
+  // Outputs derived in an evidence segment retain ALL its sources, including historical ones.
+  return { role: message.role, text: message.text, evidenceIds: [...segment.evidenceIds], providerId, ...(delivery ? { delivery } : {}) };
 }
 
 function normalizeSegment(segment) {
@@ -114,22 +119,27 @@ function validateConversation(conversation) {
   }
   if (typeof conversation.createdAt !== 'string' || Number.isNaN(Date.parse(conversation.createdAt))) throw new Error('Conversation createdAt is invalid');
   if (typeof conversation.updatedAt !== 'string' || Number.isNaN(Date.parse(conversation.updatedAt))) throw new Error('Conversation updatedAt is invalid');
-  if (!Array.isArray(conversation.segments) || !Array.isArray(conversation.messages)) throw new Error('Conversation shape is invalid');
+  if (!Array.isArray(conversation.segments) || !Array.isArray(conversation.messages)
+    || conversation.segments.length > 1024 || conversation.messages.length > 1024) throw new Error('Conversation shape or count limit is invalid');
   const segments = conversation.segments.map(normalizeSegment);
   const segmentIds = new Set(segments.map((segment) => segment.id));
   if (new Set(segmentIds).size !== segments.length) throw new Error('Conversation segments are duplicated');
   if (conversation.activeSegmentId !== null && (!segmentIds.has(conversation.activeSegmentId))) throw new Error('Conversation active segment is invalid');
-  for (const message of conversation.messages) {
+  const messageIds = new Set();
+  const messages = conversation.messages.map((message) => {
     if (!message || typeof message !== 'object' || !idPattern.test(message.id)) throw new Error('Conversation message is invalid');
     if (!segmentIds.has(message.segmentId)) throw new Error('Conversation message segment is invalid');
+    if (messageIds.has(message.id)) throw new Error('Duplicate conversation message ID');
+    messageIds.add(message.id);
     const segment = segments.find((item) => item.id === message.segmentId);
     const normalized = normalizeMessageInput(message, segment);
     if (message.createdAt !== undefined && (typeof message.createdAt !== 'string' || Number.isNaN(Date.parse(message.createdAt)))) {
       throw new Error('Conversation message timestamp is invalid');
     }
-    void normalized;
-  }
-  return conversation;
+    return { id: message.id, segmentId: message.segmentId, ...normalized, ...(message.createdAt ? { createdAt: message.createdAt } : {}) };
+  });
+  return { id: conversation.id, caseId: conversation.caseId, title: conversation.title, createdAt: conversation.createdAt,
+    updatedAt: conversation.updatedAt, activeSegmentId: conversation.activeSegmentId, segments, messages };
 }
 
 function conversationFile(root, id) {
@@ -138,16 +148,10 @@ function conversationFile(root, id) {
 
 async function writeConversation(root, conversation) {
   const directory = join(assertRoot(root), 'conversations');
-  await mkdir(directory, { recursive: true });
-  const file = conversationFile(root, conversation.id);
-  const temporary = join(directory, `.${conversation.id}.${randomUUID()}.tmp`);
-  try {
-    await writeFile(temporary, JSON.stringify(conversation, null, 2), { flag: 'wx', mode: 0o600 });
-    await rename(temporary, file);
-  } catch (error) {
-    await unlink(temporary).catch(() => {});
-    throw error;
-  }
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  await assertLocalDirectory(root);
+  conversationFile(root, conversation.id);
+  await writeLocalJson(directory, `${conversation.id}.json`, validateConversation(conversation), maxConversationBytes);
 }
 
 function blankConversation(root, options = {}) {
@@ -180,17 +184,21 @@ export function createChatStore(root) {
   async function read(id) {
     let parsed;
     try {
-      parsed = JSON.parse(await readFile(conversationFile(root, id), 'utf8'));
+      conversationFile(root, id);
+      parsed = await readLocalJson(join(root, 'conversations'), `${id}.json`, null, maxConversationBytes);
     } catch (error) {
       if (error.code === 'ENOENT') throw new Error('Conversation not found');
       throw new Error('Conversation is unreadable');
     }
+    if (!parsed) throw new Error('Conversation not found');
+    if (parsed.id !== id) throw new Error('Conversation ID mismatch');
     return validateConversation(parsed);
   }
 
   async function list() {
     let entries;
     try {
+      await assertLocalDirectory(join(root, 'conversations'));
       entries = await readdir(join(root, 'conversations'), { withFileTypes: true });
     } catch (error) {
       if (error.code === 'ENOENT') return [];
@@ -219,7 +227,7 @@ export function createChatStore(root) {
     });
   }
 
-  async function startSegment(id, input = {}) {
+  async function startSegmentOne(id, input = {}) {
     const conversation = await read(id);
     const normalized = normalizeSegmentInput(input);
     const segment = Object.freeze({ id: randomUUID(), ...normalized, evidenceIds: Object.freeze(normalized.evidenceIds) });
@@ -234,7 +242,7 @@ export function createChatStore(root) {
     return segment;
   }
 
-  async function append(id, message = {}) {
+  async function appendOne(id, message = {}) {
     const conversation = await read(id);
     const segmentId = message.segmentId ?? conversation.activeSegmentId;
     if (typeof segmentId !== 'string') throw new Error('Conversation segment is required');
@@ -254,5 +262,37 @@ export function createChatStore(root) {
     return entry;
   }
 
-  return Object.freeze({ create, list, read, append, startSegment });
+  function mutate(id, operation) {
+    conversationFile(root, id);
+    return serializeLocalMutation(join(root, 'conversations'), `${id}.json`, operation);
+  }
+
+  async function migrateLegacy(caseId) {
+    assertId(caseId, 'case ID');
+    const legacy = await readConversation(root, caseId, { missing: null });
+    if (!legacy) return null;
+    return mutate(legacy.id, async () => {
+      const missing = Symbol('missing');
+      const existing = await readLocalJson(join(root, 'conversations'), `${legacy.id}.json`, missing, maxConversationBytes);
+      if (existing !== missing) {
+        if (!existing || existing.caseId !== caseId) throw new Error('Legacy migration case mismatch');
+        return read(legacy.id);
+      }
+      const segments = []; const messages = []; const inherited = new Set();
+      for (const message of legacy.messages) {
+        for (const id of message.evidenceIds) inherited.add(id);
+        const segment = { id: randomUUID(), sensitivity: inherited.size ? 'evidence' : 'clean', providerId: 'legacy-local', evidenceIds: [...inherited] };
+        segments.push(segment);
+        messages.push({ id: message.id, segmentId: segment.id, role: message.role, text: message.text, providerId: 'legacy-local', evidenceIds: [...inherited], createdAt: message.createdAt });
+      }
+      const result = { id: legacy.id, caseId, title: `案件 ${caseId.slice(0, 8)}（旧记录）`, createdAt: legacy.createdAt, updatedAt: legacy.updatedAt,
+        activeSegmentId: segments.at(-1)?.id ?? null, segments, messages };
+      await writeConversation(root, result);
+      return validateConversation(result);
+    });
+  }
+  return Object.freeze({ create, list, read, migrateLegacy,
+    append: (id, message = {}) => mutate(id, () => appendOne(id, message)),
+    startSegment: (id, input = {}) => mutate(id, () => startSegmentOne(id, input)),
+  });
 }
