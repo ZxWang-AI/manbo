@@ -43,7 +43,7 @@ test('gateway rejects demo provider, missing key, and out-of-scope evidence', as
   await assert.rejects(() => gateway.send({ providerId: 'custom', model: 'm1', authorization, payload: { ...payload, scope: { evidenceIds: ['outside'], contextMessageIds: [] } } }), /scope|evidence/i);
 });
 
-test('gateway rejects private endpoints and does not follow redirects', async () => {
+test('gateway rejects a literal loopback endpoint before session creation', async () => {
   const privateStore = { async readProvider() { return { config: { id: 'custom', kind: 'openai-compatible', model: 'm1', endpoint: 'https://127.0.0.1/v1' }, secret: 'secret' }; } };
   const gateway = createModelGateway({ providerStore: privateStore, sessionFactory: async () => { throw new Error('should not run'); } });
   await assert.rejects(() => gateway.send({ providerId: 'custom', model: 'm1', authorization, payload }), /private|local|endpoint/i);
@@ -59,3 +59,13 @@ test('gateway disposes the session when prompting fails', async () => {
   assert.equal(disposed, true);
 });
 
+test('gateway handles Pi-style synchronous disposal without replacing the reply', async () => {
+  let disposed = false;
+  const gateway = createModelGateway({
+    providerStore,
+    sessionFactory: async () => ({ async prompt() { return '真实回复'; }, dispose() { disposed = true; } }),
+  });
+  const result = await gateway.send({ providerId: 'custom', model: 'm1', authorization, payload });
+  assert.equal(result.text, '真实回复');
+  assert.equal(disposed, true);
+});

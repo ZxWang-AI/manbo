@@ -9,10 +9,12 @@ test('creates an in-memory Pi session with no tools or project discovery', async
   const cwd = await mkdtemp(join(tmpdir(), 'manbo-pi-'));
   const calls = [];
   let loaderOptions;
-  const session = { dispose: async () => calls.push('dispose') };
+  let settingsInput;
+  const session = { agent: {}, dispose: async () => calls.push('dispose') };
   const sdk = {
+    ModelRuntime: { create: async () => ({ kind: 'isolated-runtime' }) },
     SessionManager: { inMemory: () => ({ kind: 'session-memory' }) },
-    SettingsManager: { inMemory: () => ({ kind: 'settings-memory' }) },
+    SettingsManager: { inMemory: (settings) => { settingsInput = settings; return { kind: 'settings-memory' }; } },
     DefaultResourceLoader: class {
       constructor(options) { loaderOptions = options; calls.push(['loader', options]); }
       async reload() {
@@ -35,6 +37,14 @@ test('creates an in-memory Pi session with no tools or project discovery', async
   assert.deepEqual(create.tools, []);
   assert.deepEqual(create.sessionManager, { kind: 'session-memory' });
   assert.deepEqual(create.settingsManager, { kind: 'settings-memory' });
+  assert.equal(loaderOptions.settingsManager, create.settingsManager);
+  assert.equal(settingsInput.compaction.enabled, false);
+  assert.equal(settingsInput.retry.enabled, false);
+  assert.equal(settingsInput.retry.provider.maxRetries, 0);
+  assert.equal(settingsInput.cacheWarming, 'off');
+  assert.equal(settingsInput.images.autoResize, false);
+  assert.equal(settingsInput.enableAnalytics, false);
+  assert.equal(settingsInput.enableInstallTelemetry, false);
   assert.ok(create.resourceLoader);
   assert.deepEqual(loaderOptions.skillsOverride({ skills: ['hostile'], diagnostics: ['hostile'] }), { skills: [], diagnostics: [] });
   assert.deepEqual(loaderOptions.agentsFilesOverride({ agentsFiles: ['hostile'] }), { agentsFiles: [] });

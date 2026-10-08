@@ -1,5 +1,5 @@
 import { isIP } from 'node:net';
-import { createNoToolSession } from './pi-session.mjs';
+import { createNoToolSession, createIsolatedModelRuntime } from './pi-session.mjs';
 
 function privateHost(hostname) {
   const host = hostname.toLowerCase().replace(/\.$/, '');
@@ -42,35 +42,20 @@ function redactError(error) {
 
 async function piSessionFactory({ provider, secret, model, promptContext, signal }) {
   const sdk = await import('@earendil-works/pi-coding-agent');
-  const runtime = await sdk.ModelRuntime.create({ modelsPath: null, refreshOnCreate: false, allowModelNetwork: false, signal });
+  const runtime = await createIsolatedModelRuntime(sdk, signal);
   runtime.registerProvider(provider.id, {
     name: provider.name,
     baseUrl: provider.endpoint,
     api: 'openai-completions',
-    apiKey: secret,
-    models: [{ id: model, name: model, reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128_000, maxTokens: 8_192 }],
+    models: [{ id: model, name: model, reasoning: false, input: provider.capabilities?.images === true ? ['text', 'image'] : ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128_000, maxTokens: 8_192 }],
   });
+  await runtime.setRuntimeApiKey(provider.id, secret, { signal });
   const selected = runtime.getModel(provider.id, model);
   if (!selected) throw new Error('Provider model is unavailable');
-  return createNoToolSession({ cwd: process.cwd(), sdk, modelRuntime: runtime, model, promptContext, selectedModel: selected });
+  return createNoToolSession({ cwd: process.cwd(), sdk, modelRuntime: runtime, promptContext, selectedModel: selected });
 }
 
-async function directImageRequest({ endpoint, secret, model, messages, fetchImpl, signal }) {
-  const response = await fetchImpl(endpoint, {
-    method: 'POST',
-    redirect: 'error',
-    signal,
-    headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ model, messages }),
-  });
-  if (!response.ok) throw new Error(`Provider returned HTTP ${response.status}`);
-  const data = await response.json();
-  const text = data?.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || !text.trim()) throw new Error('Model returned no text');
-  return text;
-}
-
-export function createModelGateway({ providerStore, sessionFactory = piSessionFactory, fetchImpl = globalThis.fetch, now = () => new Date().toISOString() } = {}) {
+export function createModelGateway({ providerStore, sessionFactory = piSessionFactory, now = () => new Date().toISOString() } = {}) {
   if (!providerStore || typeof providerStore.readProvider !== 'function') throw new Error('Provider store is required');
   return Object.freeze({
     async send({ providerId, model, authorization, payload, signal } = {}) {
@@ -85,16 +70,8 @@ export function createModelGateway({ providerStore, sessionFactory = piSessionFa
       validateEndpoint(provider.endpoint);
       validateScope(authorization, payload, providerId, model);
       const promptContext = Object.freeze({ messages: payload.messages, attachments: payload.attachments, scope: payload.scope });
-      if (typeof fetchImpl !== 'function') throw new Error('Network client is unavailable');
       const hasImage = payload.messages.some((message) => message.content?.some?.((part) => part.type === 'image_url'));
-      if (hasImage) {
-        try {
-          const text = await directImageRequest({ endpoint: validateEndpoint(provider.endpoint), secret, model, messages: payload.messages, fetchImpl, signal });
-          return Object.freeze({ providerId, model, text, delivered: true, createdAt: now() });
-        } catch (error) {
-          throw redactError(error);
-        }
-      }
+      if (hasImage && provider.capabilities?.images !== true) throw new Error('Provider does not support image attachments');
       let session;
       try {
         session = await sessionFactory({ provider, secret, model, promptContext, authorization, signal });
@@ -106,7 +83,9 @@ export function createModelGateway({ providerStore, sessionFactory = piSessionFa
       } catch (error) {
         throw redactError(error);
       } finally {
-        if (session) await session.dispose().catch(() => {});
+        if (session) {
+          try { await session.dispose(); } catch { /* Cleanup must not replace the request outcome. */ }
+        }
       }
     },
   });
