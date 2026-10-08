@@ -47,15 +47,17 @@
 
 **Files:** Modify `package.json`, `package-lock.json`.
 
-- [ ] Run `npm audit --omit=dev --json` and `npm ls brace-expansion`; retain only advisory/package metadata (no secrets).
+- [x] Run `npm audit --omit=dev --json` and `npm ls brace-expansion`; retain only advisory/package metadata (no secrets). Found `brace-expansion@5.0.9` under Pi/minimatch with one production high finding.
 - [ ] Add scoped override `"overrides": {"brace-expansion": "5.0.12"}` using apply_patch, then `npm install` to regenerate the lockfile. Do not use `--force` or upgrade Pi/Electron incidentally.
 - [ ] Run `npm ls brace-expansion`, `npm audit --omit=dev`, and `npm test`. Require no production vulnerability finding and the pinned fixed version before committing.
 
+**Blocked checkpoint (2026-10-08):** The override was tried, but `npm install` and `npm update brace-expansion --ignore-scripts` both retained 5.0.9. `npm audit fix --dry-run --ignore-scripts --json` proposed zero changes and still reported the high finding. Pi 0.87.1 ships `npm-shrinkwrap.json` (`hasShrinkwrap: true` in the application lockfile). Removed the ineffective override and incidental lock metadata changes; Pi/Electron pins are unchanged. Stop dependency implementation here pending review of an explicit SDK upgrade or reproducible upstream patch strategy. Do not mark the audit or packaging gate complete. Task 4 may document this failure and deliver the already-approved source push independently.
+
 ## Task 4: Report evidence and write the packaging spec
 
-**Files:** Update `docs/testing/2026-10-08-desktop-release-readiness.md`; create `docs/superpowers/specs/2026-10-08-desktop-alpha-release-design.md`.
+**Files:** Update `docs/testing/2026-10-08-desktop-release-readiness.md` and the current-status paragraph in `README.md`; create `docs/superpowers/specs/2026-10-08-desktop-alpha-release-design.md`.
 
-- [ ] Record actual targeted/full-test counts, dependency audit and fixed blockers; keep remaining release blockers explicit.
-- [ ] Write the agreed three-platform Alpha packaging spec: Windows NSIS x64, macOS DMG x64/arm64, Linux AppImage x64; native GitHub Actions runners; allowlist package contents; no secrets/user data; SHA-256; accurate unsigned/pre-release warnings; manual publish only after required gates.
+- [x] Record actual targeted/full-test counts, dependency audit and fixed blockers; keep remaining release blockers explicit. Preserved first-check history and appended repair evidence; README now reports 60/60 with the event-stream and audit limitations.
+- [x] Write the agreed three-platform Alpha packaging spec: Windows NSIS x64, macOS DMG x64/arm64, Linux AppImage x64; native GitHub Actions runners; allowlist package contents; no secrets/user data; SHA-256; accurate unsigned/pre-release warnings; manual publish only after required gates.
 - [ ] Review the written spec for ambiguous scope/claims. Commit and push ordinary `main` updates (`git push origin main`); verify remote HEAD with `git ls-remote origin refs/heads/main`.
 - [ ] Ask the user to review the new written packaging spec before its implementation plan. Do not create a Release/tag or claim installers exist during these preflight repairs.
