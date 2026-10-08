@@ -158,3 +158,7 @@ Electron 44.4.5 发布 manifest 没有 postinstall；原生安装脚本须显式
 原阻断项 7 的生产依赖 high 已解决；无效根 override 路线保持失败/被替代，未改写为成功。Pi 权限没有扩大，文件、终端、MCP、codemode、独立联网与自治继续禁用。BYOK、本地持久化、仅用户确认内容送所选云供应商和原件不改的边界不变。
 
 材料实算哈希/大小/编码/路径、真实 PDF 提取、历史敏感授权/并发迁移、UI 取消/重复确认/IPC sender、provider 纯文本显示、DNS/IPv6/重定向/超时/请求限额，以及三平台凭据和安装验收均仍未结案。知识库检索、结构化证据链、用户导出和举报操作引导仍不属于已完成能力。没有生成安装包、tag 或公开 Release；发布总门禁继续未通过。
+
+### 源码推送收据
+
+本轮源码与依赖变更提交为 `79277128e1344b1e2c2def7fce586cdb1ef6ca68`（`fix: isolate Pi resources and adopt audited 1.1.0 tree`），已通过普通 `git push origin main` 推送。再次查询远程 `refs/heads/main` 与该 SHA 完全一致，推送后的工作树干净。本收据与计划勾选作为后续文档提交记录，不属于上述源码提交；源码推送不代表安装包发布或剩余门禁通过。
