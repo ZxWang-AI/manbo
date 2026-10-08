@@ -231,6 +231,6 @@ $('#clear-attachments').addEventListener('click', () => { selectedEvidenceIds = 
 $('#toggle-rail').addEventListener('click', () => appShell.classList.toggle('rail-open'));
 $('#settings').addEventListener('click', () => { setProviderStatus('Key 不会显示；保存新的 Key 会替换旧值。'); settingsDialog.showModal(); });
 $('#close-settings').addEventListener('click', () => settingsDialog.close());
-$('#save-provider').addEventListener('click', async () => { try { const config = { id: $('#provider-id').value, name: $('#provider-name').value, kind: 'openai-compatible', model: $('#provider-model').value, endpoint: $('#provider-endpoint').value }; await window.manbo.saveProvider(config, $('#provider-secret').value); $('#provider-secret').value = ''; await refreshProviders(); settingsDialog.close(); setStatus('Provider 已保存到本机系统凭据存储。'); } catch (error) { setProviderStatus(error.message, true); } });
+$('#save-provider').addEventListener('click', async () => { try { const config = { id: $('#provider-id').value, name: $('#provider-name').value, kind: 'openai-compatible', model: $('#provider-model').value, endpoint: $('#provider-endpoint').value, capabilities: { images: $('#provider-images').checked } }; await window.manbo.saveProvider(config, $('#provider-secret').value); $('#provider-secret').value = ''; await refreshProviders(); settingsDialog.close(); setStatus('Provider 已保存到本机系统凭据存储。'); } catch (error) { setProviderStatus(error.message, true); } });
 
 Promise.all([refreshProviders(), refreshConversations()]).catch((error) => setStatus(error.message, true));
