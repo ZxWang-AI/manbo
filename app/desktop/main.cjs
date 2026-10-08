@@ -155,7 +155,8 @@ async function readEvidenceForOutbound(caseId, evidenceId) {
   const extension = extname(item.name).toLowerCase();
   const mimeType = extension === '.pdf' ? 'application/pdf'
     : ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(extension) ? `image/${extension.slice(1) === 'jpg' ? 'jpeg' : extension.slice(1)}`
-      : 'text/plain';
+      : ['.txt', '.md', '.csv', '.json', '.log', '.xml', '.html', '.yaml', '.yml'].includes(extension) ? 'text/plain'
+        : 'application/octet-stream';
   if (mimeType.startsWith('image/')) return { ...item, mimeType, dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}` };
   if (mimeType === 'application/pdf') return { ...item, mimeType, pages: [] };
   return { ...item, mimeType, content: bytes.toString('utf8') };
