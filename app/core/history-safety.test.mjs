@@ -99,6 +99,26 @@ test('migration never overwrites a corrupt target and chat provenance rejects co
   await assert.rejects(store.startSegment(conversation.id, { sensitivity:'evidence', providerId:'custom', evidenceIds:['e\u0001'] }), /invalid/i);
 });
 
+test('a delivered exchange is persisted together and invalid assistant leaves no partial entry', async (t) => {
+  const { store, conversation, file } = await fixture(t);
+  const segment = { sensitivity:'clean',providerId:'custom',evidenceIds:[] };
+  const before = await readFile(file);
+  await assert.rejects(store.appendExchange(conversation.id,{segment,user:'hello',assistant:'x'.repeat(20001),requestId:'req1'}));
+  assert.deepEqual(await readFile(file),before);
+  const messages = await store.appendExchange(conversation.id,{segment,user:'hello',assistant:'reply',requestId:'req1'});
+  assert.equal(messages.length,2); assert.equal((await store.read(conversation.id)).messages.length,2);
+});
+
+test('exchange at real file capacity fails without persisting only the user message',async (t) => {
+  const {store,conversation,file}=await fixture(t);
+  await store.append(conversation.id,{role:'user',text:'original'});
+  const value=JSON.parse(await readFile(file,'utf8'));
+  value.messages=Array.from({length:1023},() => ({...value.messages[0],id:randomUUID()}));
+  await writeFile(file,JSON.stringify(value)); const before=await readFile(file);
+  await assert.rejects(store.appendExchange(conversation.id,{segment:{sensitivity:'clean',providerId:'custom',evidenceIds:[]},user:'hello',assistant:'reply',requestId:'req-capacity'}));
+  assert.deepEqual(await readFile(file),before);
+});
+
 function historyInput({ selected = ['e1'], messages, segments, prompt = 'Summarize' } = {}) {
   const file = { id: 'e1', name: 'synthetic.txt', sha256: 'a'.repeat(64), bytes: 5, content: 'safe' };
   return {

@@ -2,7 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron')
 const { join } = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const activeChatRequests = new Map();
+let chatLifecyclePromise;
 const documentUrl = pathToFileURL(join(__dirname, 'index.html')).href;
 let mainWindow = null;
 
@@ -66,7 +66,8 @@ async function createWindow() {
   window.webContents.session.on('will-download', (event) => event.preventDefault());
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null;
-    for (const controller of activeChatRequests.values()) controller.abort();
+    if (chatLifecyclePromise) void chatLifecyclePromise.then((lifecycle) => lifecycle.dispose());
+    chatLifecyclePromise = null;
   });
   await window.loadFile(join(__dirname, 'index.html'));
 }
@@ -153,12 +154,6 @@ async function readEvidenceForOutbound(caseId, evidenceId) {
   return reader.readEvidenceForOutbound(vaultRoot(), caseId, evidenceId);
 }
 
-async function configuredProviderStore() {
-  const { readProvider } = await import('../core/providers.mjs');
-  const settings = await providerSettings();
-  return { readProvider: (id) => readProvider(settings, id) };
-}
-
 handle('conversation:list', async () => (await chatStore()).list());
 handle('conversation:create', async (event, options = {}) => {
   if (!options || typeof options !== 'object') throw new Error('Invalid conversation options');
@@ -172,49 +167,48 @@ handle('conversation:create', async (event, options = {}) => {
   return store.create({ caseId: options.caseId ?? null, title: options.title });
 });
 handle('conversation:load', async (event, conversationId) => (await chatStore()).read(conversationId));
-handle('chat:preview-v2', async (event, input = {}) => {
+async function prepareChat(input = {}) {
   if (!input || typeof input !== 'object' || typeof input.conversationId !== 'string') throw new Error('Invalid chat preview');
   const store = await chatStore();
   const conversation = await store.read(input.conversationId);
   const caseManifest = conversation.caseId ? await (await import('../core/cases.mjs')).readCase(vaultRoot(), conversation.caseId) : { evidence: [] };
   const { readProvider } = await import('../core/providers.mjs');
   const provider = await readProvider(await providerSettings(), input.draft?.provider);
-  const { previewOutbound } = await import('../core/outbound-payload.mjs');
-  return previewOutbound({ caseManifest, conversation, draft: { ...input.draft, model: input.draft?.model ?? provider.config.model }, readEvidence: (id) => readEvidenceForOutbound(conversation.caseId, id), capabilities: provider.config.capabilities });
-});
-handle('chat:send-v2', async (event, input = {}) => {
-  if (!input || typeof input !== 'object' || typeof input.conversationId !== 'string') throw new Error('Invalid chat request');
-  const store = await chatStore();
-  const conversation = await store.read(input.conversationId);
-  const caseManifest = conversation.caseId ? await (await import('../core/cases.mjs')).readCase(vaultRoot(), conversation.caseId) : { evidence: [] };
-  const { readProvider } = await import('../core/providers.mjs');
-  const provider = await readProvider(await providerSettings(), input.draft?.provider);
-  const { confirmOutbound } = await import('../core/outbound-payload.mjs');
-  const draft = { ...input.draft, model: input.draft?.model ?? provider.config.model };
-  const confirmed = await confirmOutbound({ caseManifest, conversation, draft, readEvidence: (id) => readEvidenceForOutbound(conversation.caseId, id), capabilities: provider.config.capabilities }, input.confirmation);
-  const controller = new AbortController();
-  activeChatRequests.set(confirmed.requestId, controller);
-  try {
-    const { createModelGateway } = await import('../agent/model-gateway.mjs');
-    const gateway = createModelGateway({ providerStore: await configuredProviderStore() });
-    const response = await gateway.send({ providerId: provider.config.id, model: draft.model, authorization: confirmed.authorization, payload: confirmed.payload, signal: controller.signal });
-    const sensitivity = confirmed.authorization.evidenceIds.length ? 'evidence' : 'clean';
-    const current = await store.read(input.conversationId);
-    let segment = current.segments.find((item) => item.id === current.activeSegmentId && item.providerId === provider.config.id && item.sensitivity === sensitivity && JSON.stringify(item.evidenceIds) === JSON.stringify(confirmed.authorization.evidenceIds));
-    if (!segment) segment = await store.startSegment(input.conversationId, { sensitivity, providerId: provider.config.id, evidenceIds: confirmed.authorization.evidenceIds });
-    const userMessage = await store.append(input.conversationId, { role: 'user', text: draft.prompt, segmentId: segment.id, providerId: provider.config.id, evidenceIds: confirmed.authorization.evidenceIds, delivery: { status: 'delivered', requestId: confirmed.requestId } });
-    const assistantMessage = await store.append(input.conversationId, { role: 'assistant', text: response.text, segmentId: segment.id, providerId: provider.config.id, evidenceIds: confirmed.authorization.evidenceIds, delivery: { status: 'delivered', requestId: confirmed.requestId } });
-    return Object.freeze({ requestId: confirmed.requestId, messages: [userMessage, assistantMessage], delivery: 'delivered' });
-  } finally {
-    activeChatRequests.delete(confirmed.requestId);
-  }
-});
-handle('chat:abort', async (event, requestId) => {
-  if (typeof requestId !== 'string') throw new Error('Invalid request ID');
-  const controller = activeChatRequests.get(requestId);
-  if (controller) controller.abort();
-  return { aborted: Boolean(controller) };
-});
+  if (provider.config.id === 'local-demo' || !provider.secret) throw new Error('Configured Key required');
+  const { prepareOutbound, previewFromPayload } = await import('../core/outbound-payload.mjs');
+  const payload = await prepareOutbound({ caseManifest, conversation, draft: { ...input.draft, model: input.draft?.model ?? provider.config.model }, readEvidence: (id) => readEvidenceForOutbound(conversation.caseId, id), capabilities: provider.config.capabilities });
+  return { conversationId:conversation.id, revision:conversation.updatedAt, provider, payload, preview:previewFromPayload(payload) };
+}
+
+function chatLifecycle() {
+  chatLifecyclePromise ??= import('../core/request-lifecycle.mjs').then(({ createRequestLifecycle }) => createRequestLifecycle({
+    prepare:prepareChat,
+    async send(prepared,{signal}) {
+      const { createModelGateway } = await import('../agent/model-gateway.mjs');
+      const providerId = prepared.provider.config.id;
+      const gateway = createModelGateway({providerStore:{readProvider:async (id) => {
+        if (id !== providerId) throw new Error('Provider mismatch');
+        return prepared.provider;
+      }}});
+      return gateway.send({providerId,model:prepared.payload.model,payload:prepared.payload,
+        authorization:{mode:'task',provider:providerId,evidenceIds:prepared.payload.scope.evidenceIds},signal});
+    },
+    async persist(prepared,response,{requestId}) {
+      const evidenceIds = prepared.payload.scope.evidenceIds;
+      return (await chatStore()).appendExchange(prepared.conversationId,{
+        segment:{sensitivity:evidenceIds.length ? 'evidence' : 'clean',providerId:prepared.provider.config.id,evidenceIds},
+        user:prepared.payload.prompt,assistant:response.text,requestId,
+      });
+    },
+  }));
+  return chatLifecyclePromise;
+}
+
+handle('chat:preview-v2', async (event,input) => (await chatLifecycle()).preview(input));
+handle('chat:send-v2', async (event,input) => (await chatLifecycle()).start(input));
+handle('chat:result', async (event,requestId) => (await chatLifecycle()).result(requestId));
+handle('chat:discard-preview', async (event,receiptId) => (await chatLifecycle()).discard(receiptId));
+handle('chat:abort', async (event,requestId) => (await chatLifecycle()).abort(requestId));
 
 app.whenReady().then(createWindow);
 app.on('activate', () => {

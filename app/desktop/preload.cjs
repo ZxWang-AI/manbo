@@ -16,5 +16,7 @@ contextBridge.exposeInMainWorld('manbo', Object.freeze({
   loadConversationRecord: (conversationId) => ipcRenderer.invoke('conversation:load', conversationId),
   previewChat: (input) => ipcRenderer.invoke('chat:preview-v2', input),
   sendChat: (input) => ipcRenderer.invoke('chat:send-v2', input),
+  waitChat: (requestId) => ipcRenderer.invoke('chat:result', requestId),
+  discardChatPreview: (receiptId) => ipcRenderer.invoke('chat:discard-preview', receiptId),
   abortChat: (requestId) => ipcRenderer.invoke('chat:abort', requestId),
 }));

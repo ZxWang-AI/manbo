@@ -267,6 +267,19 @@ export function createChatStore(root) {
     return serializeLocalMutation(join(root, 'conversations'), `${id}.json`, operation);
   }
 
+  async function appendExchangeOne(id, { segment: input, user, assistant, requestId } = {}) {
+    const current = await read(id); const normalized = normalizeSegmentInput(input);
+    const segment = { id:randomUUID(),...normalized };
+    const messages = [['user',user],['assistant',assistant]].map(([role,text]) => ({
+      id:randomUUID(),segmentId:segment.id,
+      ...normalizeMessageInput({role,text,delivery:{status:'delivered',requestId}},segment),
+      createdAt:nextTimestamp(root,current.updatedAt),
+    }));
+    await writeConversation(root,{...current,updatedAt:messages[1].createdAt,activeSegmentId:segment.id,
+      segments:[...current.segments,segment],messages:[...current.messages,...messages]});
+    return messages;
+  }
+
   async function migrateLegacy(caseId) {
     assertId(caseId, 'case ID');
     const legacy = await readConversation(root, caseId, { missing: null });
@@ -292,6 +305,7 @@ export function createChatStore(root) {
     });
   }
   return Object.freeze({ create, list, read, migrateLegacy,
+    appendExchange: (id,input) => mutate(id, () => appendExchangeOne(id,input)),
     append: (id, message = {}) => mutate(id, () => appendOne(id, message)),
     startSegment: (id, input = {}) => mutate(id, () => startSegmentOne(id, input)),
   });

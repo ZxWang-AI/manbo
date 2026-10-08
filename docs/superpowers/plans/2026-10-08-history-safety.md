@@ -42,7 +42,7 @@ assert.equal(evidenceReads, 0);
 ```
 
 - [x] Implement context normalization from stored segment/message union, explicit subset check, text/role/delivery validation. Preview adds contextMessages with actual role/text/evidenceIds; hash covers payload+scope/provenance. Limit before material reads where possible, bound aggregate after preparing actual representations.
-- [ ] Run all tests and diff review; update readiness/README/plan, ordinary commit/push and remote SHA check. No installer/public Release until other application/native gates pass.
+- [x] Run all tests and diff review; update readiness/README/plan, ordinary commit/push and remote SHA check. No installer/public Release until other application/native gates pass. Source checkpoint fe41bae68ecdf9740027a3496c65b512317038d9 equals remote main.
 
 ## Self-review
 

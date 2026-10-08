@@ -58,7 +58,7 @@ async function fixture(t, { platform = process.platform, backend = 'synthetic_en
   await new Promise((resolve) => setImmediate(resolve));
   const window = windows[0];
   const trusted = { sender: window.webContents, senderFrame: window.webContents.mainFrame };
-  return { root, handlers, window, trusted, app, dialogs: () => dialogs };
+  return { root, handlers, window, windows, trusted, app, dialogs: () => dialogs };
 }
 
 test('every real main IPC registration rejects foreign windows before any operation', async (t) => {
@@ -132,4 +132,44 @@ test('case conversation creation migrates an existing legacy conversation withou
   assert.equal(conversation.id, legacy.id);
   assert.equal(conversation.messages[0].text, 'Synthetic legacy note');
   assert.deepEqual(await readFile(source), before);
+});
+
+async function configuredChat(t) {
+  const f = await fixture(t);
+  const config = {id:'synthetic',name:'Synthetic',kind:'openai-compatible',model:'m',endpoint:'https://example.test/v1'};
+  await f.handlers.get('provider:save')(f.trusted,config,'SYNTHETIC-NOT-REAL');
+  const conversation = await f.handlers.get('conversation:create')(f.trusted,{});
+  const input = {conversationId:conversation.id,draft:{mode:'task',provider:config.id,model:'m',prompt:'hello',selectedEvidenceIds:[]}};
+  return {...f,config,input};
+}
+
+test('main preview issues secret-free receipt and consumes changed confirmation before networking', async (t) => {
+  const {handlers,trusted,input} = await configuredChat(t);
+  const preview = await handlers.get('chat:preview-v2')(trusted,input);
+  assert.equal(typeof preview.receiptId,'string');
+  assert.equal(JSON.stringify(preview).includes('SYNTHETIC-NOT-REAL'),false);
+  await assert.rejects(handlers.get('chat:send-v2')(trusted,{receiptId:preview.receiptId,confirmation:{accepted:true,preview:{...preview,prompt:'changed'}}}));
+  await assert.rejects(handlers.get('chat:send-v2')(trusted,{receiptId:preview.receiptId,confirmation:{accepted:true,preview}}));
+});
+
+test('main provider drift prevents send and early cancellation never persists an exchange', async (t) => {
+  const {handlers,trusted,input,config} = await configuredChat(t);
+  const preview = await handlers.get('chat:preview-v2')(trusted,input);
+  await handlers.get('provider:save')(trusted,{...config,endpoint:'https://other.test/v1'},'SYNTHETIC-NEW-KEY');
+  const begun = await handlers.get('chat:send-v2')(trusted,{receiptId:preview.receiptId,confirmation:{accepted:true,preview}});
+  assert.equal((await handlers.get('chat:result')(trusted,begun.requestId)).delivery,'failed');
+  const second = await handlers.get('chat:preview-v2')(trusted,input);
+  const active = await handlers.get('chat:send-v2')(trusted,{receiptId:second.receiptId,confirmation:{accepted:true,preview:second}});
+  assert.equal((await handlers.get('chat:abort')(trusted,active.requestId)).aborted,true);
+  assert.equal((await handlers.get('chat:result')(trusted,active.requestId)).delivery,'cancelled');
+  assert.equal((await handlers.get('conversation:load')(trusted,input.conversationId)).messages.length,0);
+});
+
+test('closing the main window invalidates receipts before a reopened window can reuse them',async (t) => {
+  const f=await configuredChat(t); const preview=await f.handlers.get('chat:preview-v2')(f.trusted,f.input);
+  f.window.destroyed=true; f.window.emit('closed'); f.app.emit('activate');
+  await new Promise((resolve) => setImmediate(resolve));
+  const reopened=f.windows.at(-1); const trusted={sender:reopened.webContents,senderFrame:reopened.webContents.mainFrame};
+  await assert.rejects(f.handlers.get('chat:send-v2')(trusted,{receiptId:preview.receiptId,confirmation:{accepted:true,preview}}));
+  assert.equal((await f.handlers.get('conversation:load')(trusted,f.input.conversationId)).messages.length,0);
 });

@@ -145,7 +145,7 @@ export async function prepareOutbound({ caseManifest, conversation, draft, readE
   return deepFreeze({ ...payload, requestHash: hash(payload) });
 }
 
-function previewFromPayload(payload) {
+export function previewFromPayload(payload) {
   return Object.freeze({
     provider: payload.providerId,
     model: payload.model,

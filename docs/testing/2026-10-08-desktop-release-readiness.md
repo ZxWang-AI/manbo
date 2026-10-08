@@ -190,3 +190,13 @@ Key 存储显式拒绝 unavailable/basic_text/未知 Linux 后端；只接受 gn
 现在记录按文件队列串行、严格 normalized whitelist、4 MiB/1024 条限额、单链接和 canonical 路径校验。旧记录迁移保留 ID、source 字节不变、幂等；损坏 source/target 拒绝，累计来源保守传播。每条消息继承 segment 全部来源；外发历史必须逐项选中所有来源，未授权时在材料读取前拒绝。预览数据包含实际正文和来源；prompt <=20000 字符、历史 <=40 条、附件 <=16，聚合 JSON <=2 MiB 或更小 Provider 上限。
 
 固定 Node v24.21.0 Windows x64 全套 **107/107，0 fail、0 skip，exit 0**。真实 main 源的迁移 handler 在 VM/native interface double 下验证，不代表 Electron 安装运行。队列仅进程内；conversation 未加密；聚合 JSON 是保守应用限额，不是最终 HTTP wire body 限额。确认 UI 尚未展示 contextMessages，连续对话选择、single-use receipt/重复发送/及时取消、网络传输、图片解码及四目标安装仍待验证。本轮未改依赖、未跑 audit、未生成安装包/tag/Release。
+
+## 追加：单次确认、请求生命周期与界面（2026-10-08）
+
+执行 request-lifecycle-safety 子计划。新 lifecycle/appendExchange 初始为模块或方法缺失，不能算旧行为漏洞复现。实际旧 renderer 在动态 Provider HTML、重复点击、取消确认未丢弃回执三项行为失败；接入后进一步复现取消回执覆盖最终 unknown 的竞态，以及 delivered 后刷新失败清空草稿并误报 unknown。修复后保留最终状态；只有成功刷新才清草稿，已保存但刷新失败明确提示不要重复发送。真实 HTML 补齐停止按钮，DOM double 不再偷偷补不存在的控件。新增超限草稿测试先错误触发不完整 fixture，修正 fixture 后确认旧实现未拒绝，再实施限额。
+
+主进程签发五分钟有效的单次随机回执；确认覆盖正文、来源、接收方、endpoint/model 及内部 Key/payload/revision 绑定。开始同步消费回执并返回 ID，再重验证；配置或内容改变时不调用模型。同会话只一请求，最多32回执/8活跃/64已完成结果，预览准备最多8并发；输入256 KiB、深度16和节点20000限额。send 使用冻结的首次 provider/payload，不重新读取可变配置。调用前取消为 cancelled；调用后取消、超时、保存失败为 unknown，不保存部分结果、不自动重试；整次 delivered 只在单次 bounded 文件写入成功后返回。关闭窗口使回执失效并中止可取消请求；落盘阶段不声称可撤回。
+
+界面在预览前锁定会话/配置/附件操作；历史只选全部来源当前获授权且已完成的最多40条，确认框显示实际历史正文/来源和省略数，所有外部字段使用 textContent。取消确认/Escape丢弃回执；发送异常或不确定状态保留草稿。真实文件1023条容量拒绝整次exchange、没有只写用户半条记录的行为已验证。
+
+固定 Node v24.21.0 Windows x64 全套 **140/140，0 fail、0 skip，exit 0**。main VM 和 renderer DOM double 是程序边界证据，不代替原生 Electron/Chromium。VM dynamic loader 的 ExperimentalWarning保留。依赖未改、未重跑audit。网络DNS/IPv6/redirect/真实HTTP-SSE/wire限额、完整图像解码、OS凭据和四目标安装验收继续未通过；没有公开安装包/tag/Release。

@@ -9,7 +9,7 @@ const htmlPath = new URL('./index.html', import.meta.url);
 test('preload exposes only the narrow case bridge', async () => {
   const source = await readFile(preloadPath, 'utf8');
   assert.match(source, /contextBridge\.exposeInMainWorld\(['"]manbo['"]/);
-  assert.deepEqual([...source.matchAll(/\n\s*(\w+):\s*\(/g)].map((match) => match[1]).sort(), ['abortChat', 'confirmSend', 'createCase', 'createConversation', 'deleteProvider', 'importEvidence', 'listCases', 'listConversations', 'listProviders', 'loadConversation', 'loadConversationRecord', 'previewChat', 'previewSend', 'saveProvider', 'sendChat', 'sendMessage'].sort());
+  assert.deepEqual([...source.matchAll(/\n\s*(\w+):\s*\(/g)].map((match) => match[1]).sort(), ['abortChat', 'confirmSend', 'createCase', 'createConversation', 'deleteProvider', 'discardChatPreview', 'importEvidence', 'listCases', 'listConversations', 'listProviders', 'loadConversation', 'loadConversationRecord', 'previewChat', 'previewSend', 'saveProvider', 'sendChat', 'sendMessage', 'waitChat'].sort());
   assert.doesNotMatch(source, /path|shell|execute|apiKey|token/i);
 });
 
@@ -44,7 +44,7 @@ test('desktop HTML is self-contained and explains the external model boundary', 
   assert.match(source, /导入不会上传/);
   assert.match(source, /模型供应商/);
   assert.match(source, /确认本次发送范围/);
-  for (const id of ['workspace', 'composer-input', 'provider', 'send', 'confirmation', 'settings', 'settings-dialog', 'message-stream', 'sidebar', 'evidence-rail', 'attachment-chips']) {
+  for (const id of ['workspace', 'composer-input', 'provider', 'send', 'cancel-request', 'confirmation', 'settings', 'settings-dialog', 'message-stream', 'sidebar', 'evidence-rail', 'attachment-chips']) {
     assert.match(source, new RegExp(`id=["']${id}["']`));
   }
   assert.doesNotMatch(source, /<script[^>]+src=['"]https?:/i);
