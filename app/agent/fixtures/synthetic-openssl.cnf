@@ -1,0 +1,4 @@
+# Test-only self-signed identity; never a production trust store or signing key.
+[req]
+distinguished_name = dn
+[dn]

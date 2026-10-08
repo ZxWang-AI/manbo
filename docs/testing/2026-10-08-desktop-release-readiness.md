@@ -200,3 +200,15 @@ Key 存储显式拒绝 unavailable/basic_text/未知 Linux 后端；只接受 gn
 界面在预览前锁定会话/配置/附件操作；历史只选全部来源当前获授权且已完成的最多40条，确认框显示实际历史正文/来源和省略数，所有外部字段使用 textContent。取消确认/Escape丢弃回执；发送异常或不确定状态保留草稿。真实文件1023条容量拒绝整次exchange、没有只写用户半条记录的行为已验证。
 
 固定 Node v24.21.0 Windows x64 全套 **140/140，0 fail、0 skip，exit 0**。main VM 和 renderer DOM double 是程序边界证据，不代替原生 Electron/Chromium。VM dynamic loader 的 ExperimentalWarning保留。依赖未改、未重跑audit。网络DNS/IPv6/redirect/真实HTTP-SSE/wire限额、完整图像解码、OS凭据和四目标安装验收继续未通过；没有公开安装包/tag/Release。
+
+源码收据：`0031005c1872bf001858f5fca6dbdf6ef5d5ecde` 已普通推送并核对远程 main；不是安装包发布。
+
+## 追加：真实 Pi HTTPS/SSE 网络传输（2026-10-08）
+
+执行 provider-transport-safety 计划。旧网关在 literal/mapped IPv6、特殊 IPv4、URL 隐藏路由字段、远端错误原文和超长回复等新增断言失败；新增 transport 初次缺模块不算原漏洞证据，最小 stub 后六项实际断言失败再实现。真实 Pi HTTPS 路径最初尚未注入自有 fetch，17 项失败；实现后通过，并补上域名不匹配、超大响应头、公网 IPv6 DNS 固定及另一 HTTPS origin 的 redirect 检查，共 **21 项真实 Pi 网络测试**。
+
+每次确认只允许一个 POST 到冻结 endpoint 的 chat/completions；HTTPS、DNS 全结果公网校验并固定首地址，保留原域名 TLS/SNI/Host，拒绝 private/reserved/mapped/transition 地址。无代理、redirect、重试或全局 fetch 替换；固定安全请求头，request <=8 MiB、wire <=512 KiB、headers <=16 KiB、总 deadline <=120 秒、assistant <=20000 UTF-16 单位。严格缓冲完整 SSE 再交 Pi，验证 HTTP completion、fatal UTF-8、末尾 DONE；Pi 验证正常 finish reason。取消/销毁中断 owned socket；所有远端错误固定脱敏。
+
+测试使用真实 Pi 1.1.0、实际 Node HTTPS、真实 SSE adapter 和本机合成 TLS fixture。仅 trusted test constructor 把已通过公网断言的 TCP 目标映射到 loopback、显式注入测试 CA；TLS chain/hostname 验证仍开启。未受信 CA 与受信 CA 下域名不匹配都在 HTTP body 前拒绝。另一 HTTPS server 在 307 后收到零请求；429/500 恰一次且原错误体不回显。fixture 的私钥是公开测试数据，必须从安装包排除。测试没有使用云端生产接口、用户 Key 或真实案件；公网 IPv6 解析固定不等于实际 IPv6 网络连通性验证。
+
+固定 Node v24.21.0 Windows x64 全套 **177/177，0 fail、0 skip、exit 0**。VM ExperimentalWarning 保留。依赖未改、此次未重跑 audit；原生 Electron 下的 UI/凭据/网络、完整图像边界及四目标安装验收尚未完成。未生成/上传公开 artifact、安装包、tag 或 Release，总门禁仍未通过。

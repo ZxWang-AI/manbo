@@ -55,8 +55,30 @@ test('gateway disposes the session when prompting fails', async () => {
     providerStore,
     sessionFactory: async () => ({ async prompt() { throw new Error('timeout'); }, async dispose() { disposed = true; } }),
   });
-  await assert.rejects(() => gateway.send({ providerId: 'custom', model: 'm1', authorization, payload }), /timeout/i);
+  await assert.rejects(() => gateway.send({ providerId: 'custom', model: 'm1', authorization, payload }), /Model request failed/);
   assert.equal(disposed, true);
+});
+
+for (const endpoint of ['https://[::1]/v1', 'https://[::ffff:127.0.0.1]/v1', 'https://100.64.0.1/v1', 'https://192.0.2.1/v1', 'https://224.0.0.1/v1', 'https://user:pass@public.example/v1', 'https://public.example/v1?secret=x', 'https://public.example/v1#fragment']) {
+  test(`gateway rejects unsafe receiver ${endpoint} before creating session`, async () => {
+    let calls = 0;
+    const gateway = createModelGateway({
+      providerStore: { async readProvider() { return {config: {id: 'custom', kind: 'openai-compatible', endpoint}, secret: 'synthetic-key'}; } },
+      sessionFactory: async () => { calls++; return { prompt: async () => 'reply', dispose() {} }; },
+    });
+    await assert.rejects(gateway.send({providerId: 'custom', model: 'm1', authorization, payload}), /endpoint|private|local/i);
+    assert.equal(calls, 0);
+  });
+}
+
+test('gateway never echoes provider errors even without key-like words', async () => {
+  const gateway = createModelGateway({providerStore, sessionFactory: async () => ({prompt: async () => { throw new Error('合成案件正文不可回显'); }, dispose() {}})});
+  await assert.rejects(gateway.send({providerId: 'custom', model: 'm1', authorization, payload}), (error) => error.message === 'Model request failed');
+});
+
+test('gateway rejects oversized assistant text instead of claiming delivery', async () => {
+  const gateway = createModelGateway({providerStore, sessionFactory: async () => ({prompt: async () => 'x'.repeat(20_001), dispose() {}})});
+  await assert.rejects(gateway.send({providerId: 'custom', model: 'm1', authorization, payload}), /Model request failed/);
 });
 
 test('gateway handles Pi-style synchronous disposal without replacing the reply', async () => {

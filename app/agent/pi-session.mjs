@@ -36,7 +36,7 @@ function approvedMessage(message, model) {
   };
 }
 
-export async function createNoToolSession({ cwd, sdk: injectedSdk, tools, modelRuntime, selectedModel, promptContext } = {}) {
+export async function createNoToolSession({ cwd, sdk: injectedSdk, tools, modelRuntime, selectedModel, promptContext, requestFetch } = {}) {
   if (tools !== undefined) throw new Error('Pi tools cannot be overridden in no-tool mode');
   if (typeof cwd !== 'string' || !cwd) throw new Error('An existing cwd is required');
   const absoluteCwd = resolve(cwd);
@@ -73,6 +73,13 @@ export async function createNoToolSession({ cwd, sdk: injectedSdk, tools, modelR
     // Pi adds a cwd section even to custom prompts. Its public context projection
     // hook removes all SDK system metadata and supplies only Manbo instructions.
     let activeSignal;
+    if (requestFetch !== undefined) {
+      if (typeof requestFetch !== 'function') throw new Error('Invalid request transport');
+      const streamFunction = session.agent.streamFunction;
+      session.agent.streamFunction = (model, context, options) => streamFunction(model, context, {
+        ...options, fetch: requestFetch, transport: 'sse', cacheRetention: 'none', maxRetries: 0,
+      });
+    }
     session.agent.transformContext = async (messages) => {
       activeSignal?.throwIfAborted();
       return [

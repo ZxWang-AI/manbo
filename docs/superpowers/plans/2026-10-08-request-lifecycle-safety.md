@@ -46,4 +46,4 @@ Files: renderer.js, index.html, new renderer-behavior.test.mjs; update existing 
 This plan closes application request/UI boundaries only. Deadline adds cancellation but transport must enforce its own wire/DNS/redirect/size contract. Native Electron, OS credentials, real HTTP/SSE and four installers remain separate evidence; no public artifacts before gates close.
 
 
-- [ ] Ordinary commit/push and remote SHA verification.
+- [x] Ordinary commit/push and remote SHA verification: `0031005c1872bf001858f5fca6dbdf6ef5d5ecde`, normal push to origin/main; this is a source receipt, not a release receipt.
